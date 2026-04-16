@@ -1,5 +1,5 @@
 # ============================================================================
-# H&M FASHION - LAZADA/SHOPEE STYLE E-COMMERCE (GUEST COLD START)
+# H&M FASHION
 # ============================================================================
 
 import streamlit as st
