@@ -1,7 +1,9 @@
 # ============================================================================
 # H&M FASHION RECOMMENDATION SYSTEM - STREAMLIT APP
 # ============================================================================
-# Luận án Thạc sĩ - Hệ thống gợi ý thời trang dựa trên ý định người dùng
+# LUẬN ÁN THẠC SĨ - HỆ THỐNG GỢI Ý THỜI TRANG DỰA TRÊN Ý ĐỊNH NGƯỜI DÙNG
+# ============================================================================
+# CẬP NHẬT: SỬ DỤNG DỮ LIỆU 10% TEST SET VỚI GOOGLE DRIVE ID MỚI
 # ============================================================================
 
 import streamlit as st
@@ -38,8 +40,8 @@ st.set_page_config(
 # ============================================================================
 # CONSTANTS & CONFIG
 # ============================================================================
-# ⚠️ THAY THẾ BẰNG GOOGLE DRIVE FILE ID CỦA BẠN
-IMAGES_ZIP_ID = "1B_64ay0RrrZpQfrKzD-A57UM1xg3cuvM"  # File ID của images.zip
+# ⚠️ ĐÃ CẬP NHẬT FILE ID MỚI CHO FILE 10% TEST SET
+IMAGES_ZIP_ID = "11joCEzt2tWBcYqTvNGtKO8PizSzxFk9k"  # File ID của hm_app_data_10pct.zip
 
 # Color scheme - H&M Brand Colors
 COLORS = {
@@ -329,11 +331,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING FUNCTIONS - ĐÃ FIX LỖI TẢI IMAGES
+# DATA LOADING FUNCTIONS - TẢI DỮ LIỆU TỪ GOOGLE DRIVE
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def download_and_extract_data():
-    """Download images.zip from Google Drive và tạo sample data"""
+    """Download images.zip từ Google Drive và giải nén"""
     
     progress_container = st.empty()
     
@@ -357,88 +359,53 @@ def download_and_extract_data():
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
         
-        # BƯỚC 1: Tải images.zip - ĐÃ FIX
+        # BƯỚC 1: Tải file ZIP
         progress_bar.progress(10)
-        st.text("📥 Downloading images...")
+        st.text("📥 Downloading data...")
         
-        images_zip_path = os.path.join(temp_dir, "images.zip")
+        zip_path = os.path.join(temp_dir, "hm_app_data.zip")
         
-        try:
-            session = requests.Session()
-            
-            # URL để lấy confirm token
-            url = f"https://drive.google.com/uc?export=download&id={IMAGES_ZIP_ID}"
-            
-            # Lần 1: Lấy cookies và confirm token
-            response = session.get(url, stream=True, timeout=60)
+        # Sử dụng requests để tải file với confirm token
+        session = requests.Session()
+        url = f"https://drive.google.com/uc?export=download&id={IMAGES_ZIP_ID}"
+        
+        response = session.get(url, stream=True, timeout=60)
+        
+        # Tìm confirm token nếu có
+        confirm_token = None
+        for key, value in response.cookies.items():
+            if 'download_warning' in key:
+                confirm_token = value
+                break
+        
+        if not confirm_token:
             content_str = response.content.decode('utf-8', errors='ignore')
-            
-            # Tìm confirm token trong cookies
-            confirm_token = None
-            for key, value in response.cookies.items():
-                if 'download_warning' in key:
-                    confirm_token = value
-                    break
-            
-            # Nếu không có trong cookies, tìm trong HTML
-            if not confirm_token:
-                confirm_match = re.search(r'confirm=([a-zA-Z0-9_\-]+)', content_str)
-                if confirm_match:
-                    confirm_token = confirm_match.group(1)
-            
-            # Lần 2: Tải file thực với confirm token
-            if confirm_token:
-                download_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={IMAGES_ZIP_ID}"
-            else:
-                download_url = url
-            
-            response = session.get(download_url, stream=True, timeout=300)
-            
-            # Kiểm tra nếu response là HTML (vẫn chưa tải được)
-            content_type = response.headers.get('content-type', '')
-            if 'text/html' in content_type:
-                st.text("⚠️ Got HTML, trying alternative...")
-                # Thử với confirm=t
-                alt_url = f"https://drive.google.com/uc?export=download&confirm=t&id={IMAGES_ZIP_ID}"
-                response = session.get(alt_url, stream=True, timeout=300)
-            
-            # Lưu file
-            with open(images_zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            # Kiểm tra file size
-            file_size = os.path.getsize(images_zip_path)
-            st.text(f"📦 Downloaded: {file_size / 1024 / 1024:.1f} MB")
-            
-        except Exception as e:
-            st.text(f"⚠️ Download error: {str(e)}")
+            confirm_match = re.search(r'confirm=([a-zA-Z0-9_\-]+)', content_str)
+            if confirm_match:
+                confirm_token = confirm_match.group(1)
+        
+        if confirm_token:
+            download_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={IMAGES_ZIP_ID}"
+        else:
+            download_url = url
+        
+        response = session.get(download_url, stream=True, timeout=300)
+        
+        with open(zip_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        
+        file_size = os.path.getsize(zip_path)
+        st.text(f"📦 Downloaded: {file_size / 1024 / 1024:.1f} MB")
         
         progress_bar.progress(50)
         
-        # BƯỚC 2: Giải nén images nếu là file zip hợp lệ
-        if os.path.exists(images_zip_path) and zipfile.is_zipfile(images_zip_path):
-            try:
-                with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(images_dir)
-                
-                # Đếm số ảnh
-                image_count = 0
-                for root, dirs, files in os.walk(images_dir):
-                    image_count += len([f for f in files if f.endswith(('.jpg', '.jpeg', '.png'))])
-                
-                st.text(f"✅ Images extracted: {image_count} files")
-            except Exception as e:
-                st.text(f"⚠️ Extract error: {e}")
-        else:
-            st.text("⚠️ No valid images.zip, using placeholders")
+        # BƯỚC 2: Giải nén
+        st.text("📂 Extracting files...")
         
-        progress_bar.progress(60)
-        
-        # BƯỚC 3: Tạo sample data
-        st.text("📊 Loading data files...")
-        create_sample_data(data_dir)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
         
         progress_bar.progress(100)
         time.sleep(0.5)
@@ -451,117 +418,6 @@ def download_and_extract_data():
         st.error(f"❌ Error: {str(e)}")
         raise e
 
-def create_sample_data(data_dir):
-    """Tạo sample data để test app"""
-    
-    np.random.seed(42)
-    
-    # Sample article metadata
-    articles = []
-    product_names = [
-        'Slim Fit T-shirt', 'Casual Dress', 'Denim Jacket', 'Chiffon Blouse', 'Wool Sweater',
-        'Cotton Shorts', 'Leather Boots', 'Silk Scarf', 'Linen Pants', 'Velvet Skirt',
-        'Knit Cardigan', 'Pleated Skirt', 'Bomber Jacket', 'Maxi Dress', 'Crop Top',
-        'Wide Leg Pants', 'Blazer', 'Tank Top', 'Midi Skirt', 'Jumpsuit'
-    ]
-    
-    for i in range(100):
-        articles.append({
-            'article_id': f'{i:010d}',
-            'prod_name': f'{product_names[i % len(product_names)]} {i//20 + 1}',
-            'product_type_name': np.random.choice(['T-shirt', 'Dress', 'Jacket', 'Blouse', 'Sweater', 'Shorts', 'Boots', 'Scarf', 'Pants', 'Skirt']),
-            'department_name': np.random.choice(['Womenswear', 'Menswear', 'Kidswear']),
-            'index_name': np.random.choice(['Dresses', 'Shirts', 'Trousers', 'Jackets', 'Accessories']),
-            'index_group_name': np.random.choice(['Garment Upper body', 'Garment Lower body', 'Accessories']),
-            'section_name': np.random.choice(['Womens Dresses', 'Mens Shirts', 'Kids Casual']),
-            'garment_group_name': np.random.choice(['Dresses', 'Shirts', 'Trousers', 'Outerwear']),
-            'detail_desc': f'High quality fashion item number {i}'
-        })
-    pd.DataFrame(articles).to_csv(os.path.join(data_dir, 'article_metadata.csv'), index=False)
-    
-    # Sample article intentions
-    article_intentions = []
-    for i in range(100):
-        dominant = i % 10
-        intentions = np.random.dirichlet(np.ones(10) * 0.3) * 0.3
-        intentions[dominant] += 0.7
-        
-        row = {'article_id': f'{i:010d}'}
-        for j in range(10):
-            row[f'intention_{j}'] = intentions[j]
-        article_intentions.append(row)
-    pd.DataFrame(article_intentions).to_csv(os.path.join(data_dir, 'article_intention_profiles.csv'), index=False)
-    
-    # Sample user intentions
-    user_intentions = []
-    for i in range(50):
-        preferences = np.random.dirichlet(np.ones(10) * 2)
-        row = {'customer_id': f'user_{i:04d}'}
-        for j in range(10):
-            row[f'intention_{j}'] = preferences[j]
-        user_intentions.append(row)
-    pd.DataFrame(user_intentions).to_csv(os.path.join(data_dir, 'user_intention_weights.csv'), index=False)
-    
-    # Sample intention labels
-    intention_labels = {
-        '0': {'name': 'Casual Everyday', 'description': 'Comfortable daily wear for relaxed moments', 'icon': '👕'},
-        '1': {'name': 'Work Professional', 'description': 'Office and business attire for success', 'icon': '👔'},
-        '2': {'name': 'Party Evening', 'description': 'Night out and celebration outfits', 'icon': '💃'},
-        '3': {'name': 'Sport Active', 'description': 'Athletic and workout wear', 'icon': '🏃'},
-        '4': {'name': 'Formal Event', 'description': 'Weddings, galas and special occasions', 'icon': '🤵'},
-        '5': {'name': 'Beach Vacation', 'description': 'Summer and resort wear', 'icon': '🏖️'},
-        '6': {'name': 'Vintage Retro', 'description': 'Classic and timeless styles', 'icon': '👗'},
-        '7': {'name': 'Street Urban', 'description': 'Trendy city fashion and hip-hop style', 'icon': '🧢'},
-        '8': {'name': 'Minimalist', 'description': 'Simple, clean and modern designs', 'icon': '⚪'},
-        '9': {'name': 'Luxury Designer', 'description': 'High-end fashion and premium brands', 'icon': '💎'}
-    }
-    with open(os.path.join(data_dir, 'intention_labels.json'), 'w') as f:
-        json.dump(intention_labels, f)
-    
-    # Sample test interactions
-    interactions = []
-    for i in range(50):
-        user_id = f'user_{i:04d}'
-        n_purchases = np.random.randint(1, 16)
-        for _ in range(n_purchases):
-            article_id = f'{np.random.randint(0, 100):010d}'
-            interactions.append({
-                'customer_id': user_id,
-                'article_id': article_id,
-                'price': np.random.uniform(10, 200),
-                'sales_channel_id': np.random.choice([1, 2])
-            })
-    pd.DataFrame(interactions).to_csv(os.path.join(data_dir, 'test_interactions.csv'), index=False)
-    
-    # Sample user confidence
-    user_interaction_counts = {}
-    for inter in interactions:
-        uid = inter['customer_id']
-        user_interaction_counts[uid] = user_interaction_counts.get(uid, 0) + 1
-    
-    confidence = []
-    for i in range(50):
-        user_id = f'user_{i:04d}'
-        count = user_interaction_counts.get(user_id, 0)
-        conf = min(0.3 + count * 0.05, 0.95)
-        confidence.append({
-            'customer_id': user_id,
-            'confidence': conf
-        })
-    pd.DataFrame(confidence).to_csv(os.path.join(data_dir, 'user_confidence_scores.csv'), index=False)
-    
-    # Sample app summary
-    app_summary = {
-        'total_articles': 100,
-        'total_users': 50,
-        'total_interactions': len(interactions),
-        'intention_categories': 10,
-        'auc_score': 0.8201,
-        'improvement': '+3.54%'
-    }
-    with open(os.path.join(data_dir, 'app_summary.json'), 'w') as f:
-        json.dump(app_summary, f)
-
 # ============================================================================
 # RECOMMENDATION ENGINE
 # ============================================================================
@@ -572,15 +428,42 @@ class RecommendationEngine:
         
         # Load all data
         with st.spinner("🔄 Initializing recommendation engine..."):
-            self.article_df = load_article_metadata(data_dir)
-            self.article_intentions, self.intention_cols = load_article_intentions(data_dir)
-            self.user_intentions, _ = load_user_intentions(data_dir)
-            self.intention_labels = load_intention_labels(data_dir)
-            self.test_interactions = load_test_interactions(data_dir)
-            self.user_confidence_df = load_user_confidence(data_dir)
-            self.app_summary = load_app_summary(data_dir)
+            self.article_df = pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
+            self.article_intentions, self.intention_cols = self.load_article_intentions(data_dir)
+            self.user_intentions, _ = self.load_user_intentions(data_dir)
+            self.intention_labels = self.load_intention_labels(data_dir)
+            self.test_interactions = pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
+            self.user_confidence_df = self.load_user_confidence(data_dir)
+            self.app_summary = self.load_app_summary(data_dir)
             
             self._build_mappings()
+    
+    def load_article_intentions(self, data_dir):
+        df = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
+        intention_cols = [f'intention_{i}' for i in range(10)]
+        return df, intention_cols
+    
+    def load_user_intentions(self, data_dir):
+        df = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
+        intention_cols = [f'intention_{i}' for i in range(10)]
+        return df, intention_cols
+    
+    def load_intention_labels(self, data_dir):
+        with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
+            return json.load(f)
+    
+    def load_user_confidence(self, data_dir):
+        try:
+            return pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
+        except:
+            return pd.DataFrame()
+    
+    def load_app_summary(self, data_dir):
+        try:
+            with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
+                return json.load(f)
+        except:
+            return {}
     
     def _build_mappings(self):
         # Build lookup dictionaries for performance
@@ -680,49 +563,6 @@ class RecommendationEngine:
         
         articles.sort(key=lambda x: x[1], reverse=True)
         return [aid for aid, _ in articles[:top_n]]
-
-# ============================================================================
-# DATA LOADING FUNCTIONS
-# ============================================================================
-@st.cache_data
-def load_article_metadata(data_dir):
-    return pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
-
-@st.cache_data
-def load_article_intentions(data_dir):
-    df = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
-    intention_cols = [f'intention_{i}' for i in range(10)]
-    return df, intention_cols
-
-@st.cache_data
-def load_user_intentions(data_dir):
-    df = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
-    intention_cols = [f'intention_{i}' for i in range(10)]
-    return df, intention_cols
-
-@st.cache_data
-def load_intention_labels(data_dir):
-    with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
-        return json.load(f)
-
-@st.cache_data
-def load_test_interactions(data_dir):
-    return pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
-
-@st.cache_data
-def load_user_confidence(data_dir):
-    try:
-        return pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
-    except:
-        return pd.DataFrame()
-
-@st.cache_data
-def load_app_summary(data_dir):
-    try:
-        with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
-            return json.load(f)
-    except:
-        return {}
 
 # ============================================================================
 # UI COMPONENTS
@@ -1161,7 +1001,12 @@ def render_account_tab(engine, user_id):
     
     # About the system
     st.markdown("---")
-    st.markdown("""
+    
+    # Lấy thông tin model performance từ app_summary
+    model_auc = engine.app_summary.get('model_performance', {}).get('three_tower_auc', 0.8201)
+    model_improvement = engine.app_summary.get('model_performance', {}).get('improvement', '+3.54%')
+    
+    st.markdown(f"""
         <div style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); 
                     border-radius: 16px; padding: 1.5rem; margin-top: 2rem;">
             <h4 style="margin-top: 0; color: #333;">🎓 About This System</h4>
@@ -1171,11 +1016,11 @@ def render_account_tab(engine, user_id):
             </p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                 <div style="background: white; padding: 1rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700; color: #E50010;">0.8201</div>
+                    <div style="font-size: 24px; font-weight: 700; color: #E50010;">{model_auc:.4f}</div>
                     <div style="font-size: 12px; color: #888;">AUC Score</div>
                 </div>
                 <div style="background: white; padding: 1rem; border-radius: 10px; text-align: center;">
-                    <div style="font-size: 24px; font-weight: 700; color: #E50010;">+3.54%</div>
+                    <div style="font-size: 24px; font-weight: 700; color: #E50010;">{model_improvement}</div>
                     <div style="font-size: 12px; color: #888;">vs Two-Tower</div>
                 </div>
                 <div style="background: white; padding: 1rem; border-radius: 10px; text-align: center;">
