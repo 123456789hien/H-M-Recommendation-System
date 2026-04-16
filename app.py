@@ -795,7 +795,8 @@ def render_explore_tab(engine):
                 help=intent_info['description']
             ):
                 st.session_state.selected_intention = i
-                st.rerun()
+                # SỬ DỤNG experimental_rerun() THAY VÌ rerun()
+                st.experimental_rerun()
     
     # Show products for selected intention
     if st.session_state.get('selected_intention') is not None:
