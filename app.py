@@ -1,7 +1,7 @@
 # ============================================================================
 # H&M FASHION RECOMMENDATION SYSTEM - STREAMLIT APP
 # ============================================================================
-# USING GOOGLE DRIVE FOLDERS WITH DIRECT FILE IDs
+# MASTER'S THESIS - INTENTION-AWARE FASHION RECOMMENDATION SYSTEM
 # ============================================================================
 
 import streamlit as st
@@ -14,9 +14,12 @@ import time
 from PIL import Image
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
-import requests
 import gdown
+import subprocess
 
+# ============================================================================
+# PAGE CONFIGURATION
+# ============================================================================
 st.set_page_config(
     page_title="H&M Fashion Recommendation",
     page_icon="👗",
@@ -25,39 +28,50 @@ st.set_page_config(
 )
 
 # ============================================================================
-# GOOGLE DRIVE FILE IDs - YOU NEED TO REPLACE THESE WITH YOUR ACTUAL IDs
+# GOOGLE DRIVE FILE IDs - UPDATED WITH YOUR ACTUAL IDs
 # ============================================================================
-# DATA FOLDER files (replace with your actual file IDs)
 FILE_IDS = {
     'article_metadata.csv': '1RjZmAdpGvQCQHeKpEL30dlTyRenWU1GY',
     'article_intention_profiles.csv': '1aHDWsO8tA2dtKd7bNkk85gk9DP9mNx9M',
     'user_intention_weights.csv': '1C0J3k0FLxCOCxtbLL_dzJ1TDmxWw8rv9',
-    'test_interactions.csv': '1AmaZ6DOqTxOOCkpCeRerHz1AyibVoYuG', 
+    'test_interactions.csv': '1AmaZ6DOqTxOOCkpCeRerHz1AyibVoYuG',
     'sampled_user_ids.csv': '1wxbgGcs7K-cUUC8Xm9xEgHyPmXqwE-7w',
     'intention_labels.json': '1Xsw0wM2Wvyo_Mi4PUqfpUYqdDyOEU4bH',
     'user_confidence_scores.csv': '1sa6t6Oun06YpMoJSz7YwN4lufdGYuW6o',
-    'customers_cleaned.csv': '1fXH8bSUorehRkbMT2_ROUJUzvBPKzHCO', 
-    'app_summary.json': '1JJN21tQ4uQ89q-wNvQ1wfnwqV0r7qbHN' 
+    'customers_cleaned.csv': '1fXH8bSUorehRkbMT2_ROUJUzvBPKzHCO',
+    'app_summary.json': '1JJN21tQ4uQ89q-wNvQ1wfnwqV0r7qbHN'
 }
 
-# IMAGES FOLDER ID - for downloading entire folder
-IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6" 
+IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6"
 
 # ============================================================================
 # COLOR SCHEME
 # ============================================================================
 COLORS = {
-    'primary': '#E50010', 'secondary': '#000000', 'accent': '#F4F4F4',
-    'text': '#333333', 'light': '#FFFFFF', 'success': '#00A651',
-    'warning': '#FF6B35', 'info': '#4B86C9'
+    'primary': '#E50010',
+    'secondary': '#000000',
+    'accent': '#F4F4F4',
+    'text': '#333333',
+    'light': '#FFFFFF',
+    'success': '#00A651',
+    'warning': '#FF6B35',
+    'info': '#4B86C9'
 }
 
 # ============================================================================
-# CUSTOM CSS (same as before - keep your existing CSS)
+# CUSTOM CSS
 # ============================================================================
 st.markdown(f"""
 <style>
-    /* Your existing CSS here - keep the same */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * {{ font-family: 'Inter', sans-serif; }}
+    
+    .main .block-container {{
+        padding-top: 0;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+    }}
+    
     .app-header {{
         background: linear-gradient(135deg, {COLORS['primary']} 0%, #ff4757 100%);
         padding: 2rem;
@@ -67,11 +81,20 @@ st.markdown(f"""
         margin: -1rem -1rem 2rem -1rem;
         box-shadow: 0 10px 40px rgba(229, 0, 16, 0.3);
     }}
+    
     .app-header h1 {{
         font-size: 2.5rem;
         font-weight: 700;
         margin-bottom: 0.5rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
     }}
+    
+    .app-header p {{
+        font-size: 1.1rem;
+        opacity: 0.95;
+        font-weight: 300;
+    }}
+    
     .product-card {{
         background: white;
         border-radius: 16px;
@@ -82,11 +105,14 @@ st.markdown(f"""
         overflow: hidden;
         border: 1px solid #eee;
     }}
+    
     .product-card:hover {{
         transform: translateY(-8px);
         box-shadow: 0 12px 40px rgba(0,0,0,0.15);
     }}
+    
     .product-info {{ padding: 1rem; }}
+    
     .product-name {{
         font-size: 14px;
         font-weight: 600;
@@ -96,11 +122,13 @@ st.markdown(f"""
         height: 40px;
         overflow: hidden;
     }}
+    
     .product-category {{
         font-size: 12px;
         color: #888;
         margin-bottom: 8px;
     }}
+    
     .product-intention {{
         display: inline-block;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -110,6 +138,7 @@ st.markdown(f"""
         font-size: 10px;
         font-weight: 500;
     }}
+    
     .stats-card {{
         background: white;
         border-radius: 16px;
@@ -118,17 +147,20 @@ st.markdown(f"""
         box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         border-left: 4px solid {COLORS['primary']};
     }}
+    
     .stats-number {{
         font-size: 2rem;
         font-weight: 700;
         color: {COLORS['primary']};
     }}
+    
     .stats-label {{
         font-size: 12px;
         color: #888;
         text-transform: uppercase;
         letter-spacing: 1px;
     }}
+    
     .profile-header {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
@@ -136,6 +168,7 @@ st.markdown(f"""
         color: white;
         margin-bottom: 2rem;
     }}
+    
     .stButton > button {{
         background: linear-gradient(135deg, {COLORS['primary']} 0%, #ff4757 100%);
         color: white;
@@ -143,7 +176,23 @@ st.markdown(f"""
         border-radius: 25px;
         padding: 0.75rem 2rem;
         font-weight: 600;
+        transition: all 0.3s ease;
     }}
+    
+    .stButton > button:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(229, 0, 16, 0.4);
+    }}
+    
+    @keyframes pulse {{
+        0%, 100% {{ opacity: 1; }}
+        50% {{ opacity: 0.5; }}
+    }}
+    
+    .loading-text {{
+        animation: pulse 1.5s ease-in-out infinite;
+    }}
+    
     .app-footer {{
         background: {COLORS['secondary']};
         color: white;
@@ -160,7 +209,7 @@ st.markdown(f"""
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def load_data_from_drive():
-    """Download data files from Google Drive using file IDs"""
+    """Download all data files and images from Google Drive"""
     
     progress_container = st.empty()
     
@@ -172,6 +221,7 @@ def load_data_from_drive():
                     <div style="font-size: 3rem; margin-bottom: 1rem;">📦</div>
                     <h3 style="color: #E50010; margin-bottom: 0.5rem;">Loading Fashion Data</h3>
                     <p class="loading-text" style="color: #666;">Downloading from Google Drive...</p>
+                    <p style="font-size: 12px; color: #888;">First time may take 2-3 minutes</p>
                 </div>
             """, unsafe_allow_html=True)
             progress_bar = st.progress(0)
@@ -188,23 +238,25 @@ def load_data_from_drive():
         st.text("📥 Downloading data files...")
         
         for i, (filename, file_id) in enumerate(FILE_IDS.items()):
-            if file_id and file_id != f'YOUR_{filename.upper().replace(".", "_")}_FILE_ID':
-                dest_path = os.path.join(data_dir, filename)
-                url = f"https://drive.google.com/uc?id={file_id}"
-                gdown.download(url, dest_path, quiet=True)
-                st.text(f"  ✓ {filename}")
+            dest_path = os.path.join(data_dir, filename)
+            url = f"https://drive.google.com/uc?id={file_id}"
+            gdown.download(url, dest_path, quiet=True)
+            st.text(f"  ✓ {filename}")
             progress_bar.progress(10 + int(i / len(FILE_IDS) * 40))
         
         # Download images folder
         progress_bar.progress(50)
         st.text("📥 Downloading images (this may take a while)...")
         
-        import subprocess
         os.chdir(images_dir)
-        subprocess.run([
-            "gdown", f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}",
-            "--folder", "--quiet"
-        ], capture_output=True)
+        folder_url = f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}"
+        result = subprocess.run(["gdown", folder_url, "--folder", "--quiet"], capture_output=True)
+        
+        # Count downloaded images
+        image_count = 0
+        for root, dirs, files in os.walk(images_dir):
+            image_count += len([f for f in files if f.endswith('.jpg')])
+        st.text(f"  ✓ Downloaded {image_count} images")
         
         progress_bar.progress(100)
         time.sleep(0.5)
@@ -218,7 +270,7 @@ def load_data_from_drive():
         raise e
 
 # ============================================================================
-# RECOMMENDATION ENGINE (same as before)
+# RECOMMENDATION ENGINE
 # ============================================================================
 class RecommendationEngine:
     def __init__(self, data_dir):
@@ -562,52 +614,54 @@ def render_account_tab(engine, user_id):
         return
     
     st.markdown("### 👤 My Account")
-    st.info("Account management features")
     
     model_auc = engine.app_summary.get('model_performance', {}).get('three_tower_auc', 0.8201)
-    st.metric("Three-Tower AUC", f"{model_auc:.4f}")
+    model_improvement = engine.app_summary.get('model_performance', {}).get('improvement', '+3.54%')
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Three-Tower AUC", f"{model_auc:.4f}", model_improvement)
+    with col2:
+        st.metric("Intention Categories", "10", "K=10")
+    
+    st.info("Account management features")
 
 def render_footer():
     st.markdown("""
         <div class="app-footer">
             <h4>H&M Fashion Recommendation System</h4>
             <p>Powered by Three-Tower Neural Network | AUC: 0.8201 | 10 Intention Categories</p>
+            <p>Master's Thesis Research Project</p>
         </div>
     """, unsafe_allow_html=True)
 
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
 def main():
     render_header()
     
-    st.warning("""
-    ⚠️ **IMPORTANT:** You need to replace the FILE_IDS in the code with your actual Google Drive file IDs.
-    
-    **How to get file IDs:**
-    1. Open each file in Google Drive
-    2. Copy the ID from the URL: `https://drive.google.com/file/d/YOUR_FILE_ID/view`
-    3. Update the `FILE_IDS` dictionary in the code
-    
-    **For images folder:** Use the folder ID: `1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6`
-    """)
-    
-    st.stop()
-    
-    # Uncomment below after replacing FILE_IDS
-    """
     try:
         data_dir = load_data_from_drive()
         engine = RecommendationEngine(data_dir)
         selected_user = render_sidebar(engine)
         
-        tab1, tab2, tab3, tab4 = st.tabs(["FOR YOU", "EXPLORE", "MY STYLE", "ACCOUNT"])
-        with tab1: render_for_you_tab(engine, selected_user)
-        with tab2: render_explore_tab(engine)
-        with tab3: render_style_profile_tab(engine, selected_user)
-        with tab4: render_account_tab(engine, selected_user)
+        tab1, tab2, tab3, tab4 = st.tabs(["👗 FOR YOU", "🔍 EXPLORE", "🎯 MY STYLE", "👤 ACCOUNT"])
+        
+        with tab1:
+            render_for_you_tab(engine, selected_user)
+        with tab2:
+            render_explore_tab(engine)
+        with tab3:
+            render_style_profile_tab(engine, selected_user)
+        with tab4:
+            render_account_tab(engine, selected_user)
         
         render_footer()
+        
     except Exception as e:
-        st.error(f"Error: {str(e)}")
-    """
+        st.error(f"Failed to initialize: {str(e)}")
+        st.info("Please check your internet connection and try refreshing the page.")
 
 if __name__ == "__main__":
     main()
