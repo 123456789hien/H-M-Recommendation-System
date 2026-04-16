@@ -1,5 +1,5 @@
 # ============================================================================
-# H&M FASHION RECOMMENDATION SYSTEM - PROFESSIONAL E-COMMERCE UI
+# H&M FASHION RECOMMENDATION SYSTEM - REFINED E-COMMERCE UI
 # ============================================================================
 
 import streamlit as st
@@ -85,7 +85,7 @@ COLORS = {
 }
 
 # ============================================================================
-# CUSTOM CSS FOR E-COMMERCE UI
+# CUSTOM CSS
 # ============================================================================
 st.markdown(f"""
 <style>
@@ -97,31 +97,24 @@ st.markdown(f"""
     }}
 
     .main .block-container {{
-        padding-top: 2rem;
+        padding-top: 1rem;
         max-width: 1200px;
     }}
 
     /* Header Styling */
     .header-container {{
         display: flex;
-        justify-content: space-between;
+        justify-content: center;
         align-items: center;
-        padding: 1rem 0;
+        padding: 1.5rem 0;
         margin-bottom: 2rem;
         border-bottom: 2px solid {COLORS['secondary']};
     }}
     .brand-logo {{
-        font-size: 2.5rem;
+        font-size: 3rem;
         font-weight: 800;
         color: {COLORS['primary']};
         letter-spacing: -2px;
-    }}
-    .header-nav {{
-        display: flex;
-        gap: 20px;
-        font-weight: 600;
-        text-transform: uppercase;
-        font-size: 0.9rem;
     }}
 
     /* Product Grid */
@@ -129,7 +122,6 @@ st.markdown(f"""
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
         gap: 30px;
-        margin-top: 20px;
     }}
 
     /* Product Card */
@@ -137,6 +129,7 @@ st.markdown(f"""
         background: {COLORS['white']};
         transition: transform 0.3s ease;
         position: relative;
+        margin-bottom: 20px;
     }}
     .product-card:hover {{
         transform: translateY(-5px);
@@ -147,18 +140,20 @@ st.markdown(f"""
         overflow: hidden;
         background: #f0f0f0;
         position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }}
     .similarity-badge {{
         position: absolute;
         top: 10px;
         right: 10px;
-        background: rgba(255, 255, 255, 0.9);
+        background: rgba(229, 0, 16, 0.9);
         padding: 4px 8px;
         border-radius: 4px;
         font-size: 10px;
         font-weight: 700;
-        color: {COLORS['primary']};
-        border: 1px solid {COLORS['primary']};
+        color: white;
         z-index: 10;
     }}
     .product-details {{
@@ -201,6 +196,8 @@ st.markdown(f"""
         margin: 2rem 0 1rem 0;
         text-transform: uppercase;
         letter-spacing: 1px;
+        border-left: 5px solid {COLORS['primary']};
+        padding-left: 15px;
     }}
 
     /* Sidebar Customization */
@@ -209,17 +206,6 @@ st.markdown(f"""
         border-right: 1px solid {COLORS['border']};
     }}
     
-    /* Tabs Customization */
-    .stTabs [data-baseweb="tab-list"] {{
-        gap: 24px;
-    }}
-    .stTabs [data-baseweb="tab"] {{
-        height: 50px;
-        white-space: pre-wrap;
-        font-weight: 600;
-        font-size: 14px;
-    }}
-
     /* Stats Card */
     .stat-box {{
         padding: 1.5rem;
@@ -246,14 +232,12 @@ st.markdown(f"""
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def load_data_from_drive():
-    """Download all data files and images from Google Drive"""
     progress_container = st.empty()
     with progress_container.container():
         st.markdown(f"""
             <div style="text-align: center; padding: 3rem;">
                 <h2 style="color: {COLORS['primary']};">H&M</h2>
                 <p>Initializing Boutique Experience...</p>
-                <div style="font-size: 0.8rem; color: #888;">Fetching latest collections from secure servers</div>
             </div>
         """, unsafe_allow_html=True)
         progress_bar = st.progress(0)
@@ -271,6 +255,7 @@ def load_data_from_drive():
             gdown.download(url, dest_path, quiet=True)
             progress_bar.progress(10 + int(i / len(FILE_IDS) * 40))
         
+        # Extract images from folder
         os.chdir(images_dir)
         folder_url = f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}"
         subprocess.run(["gdown", folder_url, "--folder", "--quiet"], capture_output=True)
@@ -298,21 +283,9 @@ class RecommendationEngine:
         self.test_interactions = pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
         
         try:
-            with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
-                self.intention_labels = json.load(f)
-        except:
-            self.intention_labels = {}
-            
-        try:
-            self.user_confidence_df = pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
-        except:
-            self.user_confidence_df = pd.DataFrame()
-            
-        try:
             with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
                 self.app_summary = json.load(f)
-        except:
-            self.app_summary = {}
+        except: self.app_summary = {}
             
         self.intention_cols = [f'intention_{i}' for i in range(10)]
         self._build_mappings()
@@ -331,11 +304,6 @@ class RecommendationEngine:
             uid, aid = str(row['customer_id']), str(row['article_id'])
             self.user_history.setdefault(uid, []).append(aid)
         
-        self.user_confidence = {
-            str(row['customer_id']): row.get('confidence', 0.5)
-            for _, row in self.user_confidence_df.iterrows()
-        } if not self.user_confidence_df.empty else {}
-        
         self.article_meta_dict = {
             str(row['article_id']): row.to_dict()
             for _, row in self.article_df.iterrows()
@@ -344,15 +312,12 @@ class RecommendationEngine:
     def get_user_intention(self, user_id):
         return self.user_intent_dict.get(user_id, np.ones(10) / 10)
 
-    def get_user_confidence(self, user_id):
-        return self.user_confidence.get(user_id, 0.0)
-
     def get_user_purchased_articles(self, user_id):
         return self.user_history.get(user_id, [])
 
-    def recommend_by_intention(self, user_id, top_n=24, exclude_purchased=True):
+    def recommend_by_intention(self, user_id, top_n=24):
         user_intent = self.get_user_intention(user_id)
-        purchased = set(self.get_user_purchased_articles(user_id)) if exclude_purchased else set()
+        purchased = set(self.get_user_purchased_articles(user_id))
         
         article_ids, intentions = [], []
         for aid, intent in self.article_intent_dict.items():
@@ -369,31 +334,23 @@ class RecommendationEngine:
     def get_article_details(self, article_id):
         return self.article_meta_dict.get(str(article_id))
 
-    def get_intention_description(self, intention_id):
-        return {
-            "name": INTENTION_NAMES.get(intention_id, f'Intention {intention_id}'),
-            "description": INTENTION_DESCRIPTIONS.get(intention_id, 'Shopping preference category'),
-            "icon": INTENTION_ICONS.get(intention_id, "🎯")
-        }
-
     def get_article_image_path(self, article_id):
+        # H&M article IDs are 10 digits, often starting with 0
         img_id = str(article_id).zfill(10)
+        # Search recursively in images_dir
         for root, dirs, files in os.walk(self.images_dir):
-            for file in files:
-                if file.startswith(img_id) or file == f"{img_id}.jpg":
-                    return os.path.join(root, file)
+            # Check for direct match or filename starting with ID
+            if f"{img_id}.jpg" in files:
+                return os.path.join(root, f"{img_id}.jpg")
+            # Some datasets might have subfolders like '010', '011' based on first 3 digits
+            prefix = img_id[:3]
+            sub_path = os.path.join(root, prefix, f"{img_id}.jpg")
+            if os.path.exists(sub_path):
+                return sub_path
         return None
 
     def get_available_users(self):
-        return sorted(list(self.user_history.keys()))
-
-    def get_articles_by_intention(self, intention_id, top_n=24):
-        articles = []
-        for aid, intent_vec in self.article_intent_dict.items():
-            if np.argmax(intent_vec) == intention_id:
-                articles.append((aid, intent_vec[intention_id]))
-        articles.sort(key=lambda x: x[1], reverse=True)
-        return articles[:top_n]
+        return sorted(list(self.user_intent_dict.keys()))
 
 # ============================================================================
 # UI COMPONENTS
@@ -402,25 +359,14 @@ def render_header():
     st.markdown(f"""
         <div class="header-container">
             <div class="brand-logo">H&M</div>
-            <div class="header-nav">
-                <span>Ladies</span>
-                <span>Men</span>
-                <span>Divided</span>
-                <span>Baby</span>
-                <span>Kids</span>
-                <span>H&M HOME</span>
-                <span style="color: {COLORS['primary']};">Sale</span>
-            </div>
         </div>
     """, unsafe_allow_html=True)
 
-def render_product_card(engine, article_id, score=None, show_tag=True):
+def render_product_card(engine, article_id, score=None, is_history=False):
     details = engine.get_article_details(article_id)
     if not details: return
     
     img_path = engine.get_article_image_path(article_id)
-    
-    # Generate a fake price based on article_id for realistic look
     price = f"{(int(article_id) % 50) + 9.99:.2f}"
     
     st.markdown('<div class="product-card">', unsafe_allow_html=True)
@@ -429,69 +375,40 @@ def render_product_card(engine, article_id, score=None, show_tag=True):
     st.markdown('<div class="image-container">', unsafe_allow_html=True)
     if score is not None:
         st.markdown(f'<div class="similarity-badge">{score:.0%} MATCH</div>', unsafe_allow_html=True)
+    elif is_history:
+        st.markdown(f'<div class="similarity-badge" style="background:#000;">PURCHASED</div>', unsafe_allow_html=True)
     
-    if img_path:
-        try:
-            img = Image.open(img_path)
-            st.image(img, use_container_width=True)
-        except:
-            st.image("https://via.placeholder.com/300x450?text=H&M+Fashion", use_container_width=True)
+    if img_path and os.path.exists(img_path):
+        st.image(Image.open(img_path), use_container_width=True)
     else:
-        st.image("https://via.placeholder.com/300x450?text=H&M+Fashion", use_container_width=True)
+        # Fallback if image not found
+        st.markdown(f"<div style='text-align:center;color:#ccc;'>No Image<br><small>{article_id}</small></div>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Details Section
-    name = details.get('prod_name', 'Unknown Product')
-    cat = details.get('product_type_name', 'Fashion')
-    group = details.get('product_group_name', 'Apparel')
+    name = details.get('prod_name', 'Fashion Item')
+    cat = details.get('product_type_name', 'Apparel')
     color = details.get('colour_group_name', 'Mixed')
-    desc = details.get('detail_desc', 'Premium quality H&M fashion piece.')
     
     st.markdown(f"""
         <div class="product-details">
             <div class="product-title">{name}</div>
             <div class="product-meta">{color} | {cat}</div>
             <div class="product-price">${price}</div>
-            <div style="margin-top: 8px;">
+        </div>
     """, unsafe_allow_html=True)
     
-    if show_tag:
-        article_intent = engine.article_intent_dict.get(str(article_id), np.zeros(10))
-        top_intent = np.argmax(article_intent)
-        intent_info = engine.get_intention_description(top_intent)
-        st.markdown(f"<span class='product-tag'>{intent_info['icon']} {intent_info['name']}</span>", unsafe_allow_html=True)
-    
-    # Tooltip-like description on hover (simplified for Streamlit)
-    st.markdown('</div></div></div>', unsafe_allow_html=True)
-    with st.expander("Product Details"):
-        st.caption(f"**Group:** {group}")
-        st.caption(f"**Description:** {desc}")
+    with st.expander("View Details"):
+        st.write(f"**Description:** {details.get('detail_desc', 'Premium H&M quality.')}")
+        st.write(f"**Group:** {details.get('product_group_name', 'N/A')}")
+        st.write(f"**Article ID:** `{article_id}`")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def render_for_you(engine, user_id):
-    if not user_id:
-        st.warning("Please sign in from the sidebar to see your personalized shop.")
-        return
+    st.markdown(f"<div class='section-title'>Recommended For You</div>", unsafe_allow_html=True)
     
-    user_intent = engine.get_user_intention(user_id)
-    dom_idx = np.argmax(user_intent)
-    intent_info = engine.get_intention_description(dom_idx)
-    confidence = engine.get_user_confidence(user_id)
-    
-    st.markdown(f"<div class='section-title'>Curated for your style: {intent_info['name']}</div>", unsafe_allow_html=True)
-    
-    # Stats row
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(f'<div class="stat-box"><div class="stat-val">{intent_info["icon"]}</div><div class="stat-label">Style Profile</div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="stat-box"><div class="stat-val">{confidence:.0%}</div><div class="stat-label">Profile Accuracy</div></div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown(f'<div class="stat-box"><div class="stat-val">{len(engine.get_user_purchased_articles(user_id))}</div><div class="stat-label">Items Purchased</div></div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    with st.spinner("Analyzing your fashion intent..."):
-        recommendations = engine.recommend_by_intention(user_id, top_n=24)
+    with st.spinner("Finding matches..."):
+        recommendations = engine.recommend_by_intention(user_id, top_n=20)
     
     if recommendations:
         cols = st.columns(4)
@@ -499,67 +416,32 @@ def render_for_you(engine, user_id):
             with cols[idx % 4]:
                 render_product_card(engine, aid, score=score)
     else:
-        st.info("No items match your profile currently. Try exploring our new arrivals!")
+        st.info("No recommendations found for this user.")
 
-def render_explore(engine):
-    st.markdown("<div class='section-title'>Shop by Category</div>", unsafe_allow_html=True)
+def render_history(engine, user_id):
+    st.markdown(f"<div class='section-title'>Your Purchase History</div>", unsafe_allow_html=True)
+    purchases = engine.get_user_purchased_articles(user_id)
     
-    # Intention Selector
-    selected_int = st.selectbox(
-        "What are you looking for today?",
-        options=range(10),
-        format_func=lambda x: f"{INTENTION_ICONS[x]} {INTENTION_NAMES[x]}"
-    )
-    
-    intent_info = engine.get_intention_description(selected_int)
-    st.markdown(f"**{intent_info['name']}**: {intent_info['description']}")
-    
-    st.markdown("---")
-    
-    articles = engine.get_articles_by_intention(selected_int, top_n=24)
-    if articles:
+    if purchases:
+        st.write(f"Showing {len(purchases)} past purchases")
         cols = st.columns(4)
-        for idx, (aid, score) in enumerate(articles):
+        for idx, aid in enumerate(reversed(purchases)): # Show newest first
             with cols[idx % 4]:
-                render_product_card(engine, aid, score=score, show_tag=False)
+                render_product_card(engine, aid, is_history=True)
+    else:
+        st.info("No purchase history found.")
 
-def render_profile(engine, user_id):
-    if not user_id: return
-    
-    st.markdown("<div class='section-title'>Your Fashion DNA</div>", unsafe_allow_html=True)
-    
+def render_dna(engine, user_id):
+    st.markdown("<div class='section-title'>Your Style DNA</div>", unsafe_allow_html=True)
     user_intent = engine.get_user_intention(user_id)
     categories = [INTENTION_NAMES[i] for i in range(10)]
     
     fig = go.Figure(data=go.Scatterpolar(
-        r=user_intent.tolist(),
-        theta=categories,
-        fill='toself',
-        fillcolor='rgba(229, 0, 16, 0.2)',
-        line=dict(color='#E50010', width=2)
+        r=user_intent.tolist(), theta=categories, fill='toself',
+        fillcolor='rgba(229, 0, 16, 0.2)', line=dict(color='#E50010', width=2)
     ))
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=False)),
-        showlegend=False,
-        margin=dict(l=80, r=80, t=20, b=20),
-        height=450
-    )
+    fig.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=False, height=400)
     st.plotly_chart(fig, use_container_width=True)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("#### Top Style Affinities")
-        top3 = np.argsort(user_intent)[::-1][:3]
-        for i, idx in enumerate(top3):
-            st.write(f"{i+1}. **{INTENTION_NAMES[idx]}** ({user_intent[idx]:.1%})")
-            
-    with col2:
-        st.markdown("#### Recent History")
-        purchases = engine.get_user_purchased_articles(user_id)
-        for aid in purchases[-5:]:
-            details = engine.get_article_details(aid)
-            if details:
-                st.caption(f"• {details.get('prod_name')}")
 
 # ============================================================================
 # MAIN
@@ -572,33 +454,37 @@ def main():
         engine = RecommendationEngine(data_path)
         
         with st.sidebar:
-            st.markdown(f"<h1 style='color:{COLORS['primary']};'>Member Club</h1>", unsafe_allow_html=True)
-            users = engine.get_available_users()
-            selected_user = st.selectbox("Sign in as Customer ID:", options=users)
+            st.markdown(f"<h2 style='color:{COLORS['primary']};'>Member Login</h2>", unsafe_allow_html=True)
+            
+            # Login Options
+            login_mode = st.radio("Login Method", ["Select from List", "Enter Customer ID"])
+            
+            if login_mode == "Select from List":
+                users = engine.get_available_users()
+                selected_user = st.selectbox("Choose a Customer:", options=users)
+            else:
+                selected_user = st.text_input("Enter Customer ID:", value=engine.get_available_users()[0])
             
             st.markdown("---")
-            st.markdown("### 🛍️ Shopping Bag")
-            st.caption("Your bag is currently empty.")
+            st.markdown("### 📊 Account Stats")
+            history_count = len(engine.get_user_purchased_articles(selected_user))
+            st.metric("Total Purchases", history_count)
             
             st.markdown("---")
-            st.markdown("### ℹ️ App Info")
-            st.caption("Three-Tower Neural Network")
-            st.caption(f"Model AUC: {engine.app_summary.get('model_performance', {}).get('three_tower_auc', 0.8201):.4f}")
-            
-        tab1, tab2, tab3 = st.tabs(["👗 FOR YOU", "🔍 EXPLORE", "📊 MY STYLE DNA"])
+            st.caption(f"Model: Three-Tower NN")
+            st.caption(f"AUC: {engine.app_summary.get('model_performance', {}).get('three_tower_auc', 0.8201):.4f}")
+        
+        # Tabs for Content
+        tab1, tab2, tab3 = st.tabs(["✨ FOR YOU", "📜 HISTORY", "🧬 STYLE DNA"])
         
         with tab1: render_for_you(engine, selected_user)
-        with tab2: render_explore(engine)
-        with tab3: render_profile(engine, selected_user)
+        with tab2: render_history(engine, selected_user)
+        with tab3: render_dna(engine, selected_user)
         
-        st.markdown(f"""
-            <div style="margin-top: 5rem; padding: 2rem 0; border-top: 1px solid {COLORS['border']}; text-align: center; color: {COLORS['text_muted']}; font-size: 0.8rem;">
-                © 2026 H&M Fashion Recommendation System | Research Project
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;margin-top:50px;color:#888;font-size:0.8rem;'>© 2026 H&M Fashion AI System</div>", unsafe_allow_html=True)
         
     except Exception as e:
-        st.error(f"Something went wrong. Please refresh the page.")
+        st.error("Application Error. Please refresh.")
         st.exception(e)
 
 if __name__ == "__main__":
