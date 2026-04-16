@@ -11,6 +11,7 @@ import json
 import os
 import zipfile
 import requests
+import gdown
 from io import BytesIO
 from PIL import Image
 import plotly.express as px
@@ -39,7 +40,6 @@ st.set_page_config(
 # ============================================================================
 # ⚠️ THAY THẾ BẰNG GOOGLE DRIVE FILE ID CỦA BẠN
 FILE_ID = "1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB"
-DOWNLOAD_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # Color scheme - H&M Brand Colors
 COLORS = {
@@ -342,11 +342,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING FUNCTIONS
+# DATA LOADING FUNCTIONS - FIXED WITH GDOWN
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def download_and_extract_data():
-    """Download ZIP from Google Drive with progress tracking"""
+    """Download ZIP from Google Drive using gdown"""
     
     progress_container = st.empty()
     
@@ -363,36 +363,52 @@ def download_and_extract_data():
             progress_bar = st.progress(0)
     
     try:
-        # Download with session for large files
-        session = requests.Session()
-        response = session.get(DOWNLOAD_URL, stream=True, timeout=300)
-        
-        # Handle Google Drive confirmation
-        if "download_warning" in response.text or len(response.content) < 1000:
-            for key, value in response.cookies.items():
-                if key.startswith("download_warning"):
-                    confirm_url = f"https://drive.google.com/uc?export=download&confirm={value}&id={FILE_ID}"
-                    response = session.get(confirm_url, stream=True, timeout=300)
-                    break
-        
-        progress_bar.progress(30)
-        
         # Create temp directory
         temp_dir = tempfile.mkdtemp()
         zip_path = os.path.join(temp_dir, "hm_data.zip")
         
-        # Download with progress
-        total_size = int(response.headers.get('content-length', 0))
-        downloaded = 0
+        progress_bar.progress(20)
         
-        with open(zip_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0:
-                        progress = int(30 + (downloaded / total_size) * 40)
-                        progress_bar.progress(min(progress, 70))
+        # Use gdown to download from Google Drive
+        url = f"https://drive.google.com/uc?id={FILE_ID}"
+        
+        # Download with gdown (fuzzy=True để xử lý các trường hợp đặc biệt)
+        gdown.download(url, zip_path, quiet=True, fuzzy=True)
+        
+        progress_bar.progress(60)
+        
+        # Verify it's a valid zip file
+        if not zipfile.is_zipfile(zip_path):
+            # Try alternative method if gdown fails
+            st.warning("Trying alternative download method...")
+            
+            alt_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
+            response = requests.get(alt_url, stream=True, timeout=300)
+            
+            # Check for confirmation token (large file warning)
+            confirm_token = None
+            for key, value in response.cookies.items():
+                if key.startswith('download_warning'):
+                    confirm_token = value
+                    break
+            
+            if confirm_token:
+                # Download with confirmation
+                confirm_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={FILE_ID}"
+                response = requests.get(confirm_url, stream=True, timeout=300)
+            
+            # Save file
+            with open(zip_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            # Verify again
+            if not zipfile.is_zipfile(zip_path):
+                # Read first 1KB to debug
+                with open(zip_path, 'rb') as f:
+                    header = f.read(1024)
+                raise Exception(f"Downloaded file is not a ZIP. Header: {header[:100]}")
         
         progress_bar.progress(75)
         
@@ -407,12 +423,35 @@ def download_and_extract_data():
         time.sleep(0.5)
         progress_container.empty()
         
+        # Verify structure
+        expected_files = ['data', 'images']
+        found_items = os.listdir(extract_dir)
+        
+        # Handle nested structure (if zip contains a root folder)
+        if len(found_items) == 1 and os.path.isdir(os.path.join(extract_dir, found_items[0])):
+            extract_dir = os.path.join(extract_dir, found_items[0])
+        
         return extract_dir
         
     except Exception as e:
         progress_container.empty()
         st.error(f"❌ Error loading data: {str(e)}")
-        st.info("💡 Tip: Make sure your Google Drive link is publicly accessible")
+        st.info("💡 Tip: Make sure your Google Drive file is publicly accessible (Anyone with the link can VIEW)")
+        
+        # Debug info
+        with st.expander("Debug Information"):
+            st.write(f"""
+            **Configuration:**
+            - FILE_ID: `{FILE_ID}`
+            - Expected URL: https://drive.google.com/file/d/{FILE_ID}/view
+            
+            **Troubleshooting:**
+            1. Check that the file ID is correct
+            2. Ensure file sharing is set to "Anyone with the link can VIEW"
+            3. Verify the file is a valid ZIP archive
+            4. Try downloading manually from: https://drive.google.com/uc?id={FILE_ID}
+            """)
+        
         raise e
 
 @st.cache_data
@@ -462,6 +501,10 @@ class RecommendationEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.images_dir = os.path.join(data_dir, 'images')
+        
+        # Verify directories exist
+        if not os.path.exists(data_dir):
+            raise Exception(f"Data directory not found: {data_dir}")
         
         # Load all data
         with st.spinner("🔄 Initializing recommendation engine..."):
@@ -795,7 +838,6 @@ def render_explore_tab(engine):
                 help=intent_info['description']
             ):
                 st.session_state.selected_intention = i
-                # SỬ DỤNG experimental_rerun() THAY VÌ rerun()
                 st.experimental_rerun()
     
     # Show products for selected intention
