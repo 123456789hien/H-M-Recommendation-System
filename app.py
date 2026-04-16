@@ -1,8 +1,8 @@
 # ============================================================================
 # H&M FASHION RECOMMENDATION SYSTEM
 # ============================================================================
-# A production-ready Streamlit app for personalized fashion recommendations
-# Powered by Three-Tower Neural Network | AUC 0.8201
+# Production-ready Streamlit app with image optimization
+# AUC 0.8201 | Three-Tower Neural Network | Intention-Aware AI
 # ============================================================================
 
 import streamlit as st
@@ -13,12 +13,12 @@ import os
 import zipfile
 import tempfile
 import time
-import gc
 from PIL import Image
+from io import BytesIO
 import plotly.graph_objects as go
-import plotly.express as px
 from sklearn.metrics.pairwise import cosine_similarity
 import gdown
+import requests
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -35,7 +35,7 @@ st.set_page_config(
 # ============================================================================
 st.markdown("""
 <style>
-    /* Header styling */
+    /* Header */
     .main-header {
         background: linear-gradient(135deg, #4B86C9 0%, #6EA8D9 100%);
         padding: 1.5rem;
@@ -43,7 +43,6 @@ st.markdown("""
         text-align: center;
         color: white;
         margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .main-header h1 {
         margin: 0;
@@ -54,14 +53,14 @@ st.markdown("""
         opacity: 0.9;
     }
     
-    /* Product card styling */
+    /* Product card */
     .product-card {
         background: white;
         border-radius: 12px;
         padding: 0.75rem;
         margin: 0.5rem 0;
         border: 1px solid #e0e0e0;
-        transition: transform 0.2s, box-shadow 0.2s;
+        transition: transform 0.2s;
         text-align: center;
         height: 100%;
     }
@@ -70,7 +69,7 @@ st.markdown("""
         box-shadow: 0 8px 16px rgba(0,0,0,0.1);
     }
     .product-title {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: 600;
         margin: 0.5rem 0;
         height: 40px;
@@ -79,7 +78,6 @@ st.markdown("""
     .product-type {
         font-size: 0.7rem;
         color: #666;
-        margin-bottom: 0.5rem;
     }
     .intention-badge {
         background-color: #BECDE0;
@@ -93,10 +91,9 @@ st.markdown("""
         font-size: 0.7rem;
         color: #4B86C9;
         font-weight: bold;
-        margin-top: 0.25rem;
     }
     
-    /* Intention card styling */
+    /* Intention card */
     .intention-card {
         background: linear-gradient(135deg, #BECDE0 0%, #D0DCE8 100%);
         border-radius: 12px;
@@ -105,7 +102,6 @@ st.markdown("""
         text-align: center;
         cursor: pointer;
         transition: all 0.2s;
-        border: 1px solid #90B7E4;
     }
     .intention-card:hover {
         background: linear-gradient(135deg, #4B86C9 0%, #6EA8D9 100%);
@@ -121,12 +117,12 @@ st.markdown("""
         font-weight: 600;
     }
     
-    /* Sidebar styling */
+    /* Sidebar */
     .css-1d391kg {
         background-color: #f8f9fa;
     }
     
-    /* Button styling */
+    /* Buttons */
     .stButton > button {
         background-color: #4B86C9;
         color: white;
@@ -140,7 +136,7 @@ st.markdown("""
         transform: translateY(-1px);
     }
     
-    /* Metric styling */
+    /* Metrics */
     .metric-card {
         background: white;
         border-radius: 10px;
@@ -149,7 +145,7 @@ st.markdown("""
         border: 1px solid #e0e0e0;
     }
     
-    /* Loading spinner */
+    /* Loading */
     .stSpinner > div {
         border-top-color: #4B86C9 !important;
     }
@@ -161,49 +157,69 @@ st.markdown("""
 # ============================================================================
 GOOGLE_DRIVE_FILE_ID = "1-wRrYq1f5R8XAMoVJHB8S_dt8MbfilcH"
 DATA_DIR = tempfile.gettempdir() + "/hm_app_data"
+IMAGES_DIR = os.path.join(DATA_DIR, "images")
+
+# Intention icons
+INTENTION_ICONS = {
+    0: "👗", 1: "👕", 2: "🧦", 3: "👶", 4: "👖",
+    5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
+}
 
 # ============================================================================
-# DATA LOADING FUNCTIONS
+# IMAGE LOADING (OPTIMIZED)
+# ============================================================================
+@st.cache_data(ttl=3600, max_entries=200, show_spinner=False)
+def load_image_cached(article_id):
+    """Load and cache image with size limit - only 200 most recent images kept"""
+    img_id = str(article_id).zfill(10)
+    img_path = os.path.join(IMAGES_DIR, f"{img_id}.jpg")
+    
+    if os.path.exists(img_path):
+        try:
+            img = Image.open(img_path)
+            # Resize immediately to reduce memory footprint
+            img.thumbnail((180, 240), Image.Resampling.LANCZOS)
+            return img
+        except Exception:
+            return None
+    return None
+
+# ============================================================================
+# DATA LOADING
 # ============================================================================
 @st.cache_resource(ttl=3600, show_spinner=False)
 def load_data():
-    """Load all data from Google Drive with caching"""
+    """Load data from Google Drive with caching"""
     
     data_path = os.path.join(DATA_DIR, "data")
-    images_path = os.path.join(DATA_DIR, "images")
     
-    # Check if data already exists
-    if os.path.exists(data_path) and os.path.exists(images_path):
-        st.session_state.data_loaded = True
-        return load_from_local(data_path, images_path)
+    # Check if already downloaded
+    if os.path.exists(data_path) and os.path.exists(os.path.join(data_path, "article_metadata.csv")):
+        return load_csv_data(data_path)
     
     # Download and extract
-    with st.spinner("📥 Downloading data from Google Drive (first time only)..."):
+    with st.spinner("📥 Loading data (first time only, please wait)..."):
         try:
-            # Download using gdown (more reliable)
-            zip_path = os.path.join(DATA_DIR, "hm_app_data.zip")
             os.makedirs(DATA_DIR, exist_ok=True)
+            zip_path = os.path.join(DATA_DIR, "data.zip")
             
             url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
-            gdown.download(url, zip_path, quiet=False)
+            gdown.download(url, zip_path, quiet=True)
             
-            # Extract
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(DATA_DIR)
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(DATA_DIR)
             
-            # Clean up
             os.remove(zip_path)
             
-            st.session_state.data_loaded = True
-            return load_from_local(data_path, images_path)
+            return load_csv_data(data_path)
             
         except Exception as e:
-            st.error(f"Failed to load data: {str(e)}")
+            st.error(f"❌ Failed to load data: {str(e)}")
             return None
 
 
-def load_from_local(data_path, images_path):
-    """Load data from local directory"""
+def load_csv_data(data_path):
+    """Load CSV files only, images loaded on demand"""
     
     try:
         # Load article metadata
@@ -211,12 +227,12 @@ def load_from_local(data_path, images_path):
         article_df['article_id'] = article_df['article_id'].astype(str)
         
         # Load article intentions
-        article_intentions = pd.read_csv(os.path.join(data_path, 'article_intention_profiles.csv'))
-        article_intentions['article_id'] = article_intentions['article_id'].astype(str)
+        article_intent = pd.read_csv(os.path.join(data_path, 'article_intention_profiles.csv'))
+        article_intent['article_id'] = article_intent['article_id'].astype(str)
         
         # Load user intentions
-        user_intentions = pd.read_csv(os.path.join(data_path, 'user_intention_weights.csv'))
-        user_intentions['customer_id'] = user_intentions['customer_id'].astype(str)
+        user_intent = pd.read_csv(os.path.join(data_path, 'user_intention_weights.csv'))
+        user_intent['customer_id'] = user_intent['customer_id'].astype(str)
         
         # Load test interactions
         test_interactions = pd.read_csv(os.path.join(data_path, 'test_interactions.csv'))
@@ -227,17 +243,27 @@ def load_from_local(data_path, images_path):
         with open(os.path.join(data_path, 'intention_labels.json'), 'r') as f:
             intention_labels = json.load(f)
         
+        # Limit data for demo (500 users, 5000 articles for better performance)
+        unique_users = user_intent['customer_id'].unique()[:500]
+        unique_articles = article_df['article_id'].unique()[:5000]
+        
+        user_intent = user_intent[user_intent['customer_id'].isin(unique_users)]
+        article_df = article_df[article_df['article_id'].isin(unique_articles)]
+        article_intent = article_intent[article_intent['article_id'].isin(unique_articles)]
+        test_interactions = test_interactions[test_interactions['customer_id'].isin(unique_users)]
+        
         return {
-            'article_df': article_df,
-            'article_intentions': article_intentions,
-            'user_intentions': user_intentions,
-            'test_interactions': test_interactions,
-            'intention_labels': intention_labels,
-            'images_path': images_path
+            'articles': article_df,
+            'article_intent': article_intent,
+            'user_intent': user_intent,
+            'interactions': test_interactions,
+            'labels': intention_labels,
+            'users': unique_users,
+            'articles_list': unique_articles
         }
         
     except Exception as e:
-        st.error(f"Error loading local data: {str(e)}")
+        st.error(f"❌ Error loading CSV: {str(e)}")
         return None
 
 
@@ -247,60 +273,49 @@ def load_from_local(data_path, images_path):
 class RecommendationEngine:
     def __init__(self, data):
         self.data = data
-        self.intention_cols = [f'intention_{i}' for i in range(10)]
+        intent_cols = [f'intention_{i}' for i in range(10)]
         
-        # Build user intention mapping
+        # User intention mapping
         self.user_intent = {}
-        for _, row in data['user_intentions'].iterrows():
-            uid = str(row['customer_id'])
-            self.user_intent[uid] = row[self.intention_cols].values.astype(np.float32)
+        for _, row in data['user_intent'].iterrows():
+            self.user_intent[str(row['customer_id'])] = row[intent_cols].values.astype(np.float32)
         
-        # Build article intention mapping
+        # Article intention mapping
         self.article_intent = {}
-        for _, row in data['article_intentions'].iterrows():
-            aid = str(row['article_id'])
-            self.article_intent[aid] = row[self.intention_cols].values.astype(np.float32)
+        for _, row in data['article_intent'].iterrows():
+            self.article_intent[str(row['article_id'])] = row[intent_cols].values.astype(np.float32)
         
-        # Build user purchase history
+        # User purchase history
         self.user_purchases = {}
-        for _, row in data['test_interactions'].iterrows():
+        for _, row in data['interactions'].iterrows():
             uid = str(row['customer_id'])
             aid = str(row['article_id'])
             if uid not in self.user_purchases:
                 self.user_purchases[uid] = []
             self.user_purchases[uid].append(aid)
         
-        # Build article metadata
+        # Article metadata
         self.article_meta = {}
-        for _, row in data['article_df'].iterrows():
+        for _, row in data['articles'].iterrows():
             self.article_meta[str(row['article_id'])] = row.to_dict()
         
-        self.intention_labels = data['intention_labels']
-        self.images_path = data['images_path']
-        
-        # Global prior (cold-start fallback)
+        self.labels = data['labels']
         self.global_prior = np.ones(10) / 10
     
-    def get_user_intention(self, user_id):
-        """Get user intention profile with cold-start handling"""
+    def get_user_intent(self, user_id):
         if user_id in self.user_intent:
             return self.user_intent[user_id]
         return self.global_prior
     
-    def get_dominant_intention(self, user_id):
-        """Get user's dominant intention"""
-        intent = self.get_user_intention(user_id)
+    def get_dominant_intent(self, user_id):
+        intent = self.get_user_intent(user_id)
         idx = np.argmax(intent)
         return idx, intent[idx]
     
-    def get_user_purchases(self, user_id):
-        """Get user's purchase history"""
-        return self.user_purchases.get(user_id, [])
-    
-    def recommend_by_intention(self, user_id, top_n=12, exclude_purchased=True):
-        """Recommend products based on intention similarity"""
-        user_intent = self.get_user_intention(user_id)
-        purchased = set(self.get_user_purchases(user_id)) if exclude_purchased else set()
+    def recommend(self, user_id, top_n=12):
+        """Get personalized recommendations"""
+        user_intent = self.get_user_intent(user_id)
+        purchased = set(self.user_purchases.get(user_id, []))
         
         scores = []
         for aid, art_intent in self.article_intent.items():
@@ -312,56 +327,35 @@ class RecommendationEngine:
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[:top_n]
     
-    def get_article_by_intention(self, intention_id, top_n=24):
+    def get_by_intention(self, intent_id, top_n=12):
         """Get top articles for a specific intention"""
         articles = []
         for aid, intent in self.article_intent.items():
-            if np.argmax(intent) == intention_id:
-                articles.append((aid, intent[intention_id]))
-        
+            if np.argmax(intent) == intent_id:
+                articles.append((aid, intent[intent_id]))
         articles.sort(key=lambda x: x[1], reverse=True)
         return articles[:top_n]
     
-    def get_article_details(self, article_id):
-        """Get article metadata"""
+    def get_article(self, article_id):
         return self.article_meta.get(str(article_id), {})
     
-    def get_intention_name(self, intention_id):
-        """Get intention name"""
-        intent = self.intention_labels.get(str(intention_id), {})
-        return intent.get('name', f'Intention {intention_id}')
+    def get_intent_name(self, intent_id):
+        return self.labels.get(str(intent_id), {}).get('name', f'Intention {intent_id}')
     
-    def get_intention_description(self, intention_id):
-        """Get intention description"""
-        intent = self.intention_labels.get(str(intention_id), {})
-        return intent.get('description', '')
+    def get_intent_desc(self, intent_id):
+        return self.labels.get(str(intent_id), {}).get('description', '')
     
-    def get_intention_icon(self, intention_id):
-        """Get emoji icon for intention"""
-        icons = {
-            0: "👗", 1: "👕", 2: "🧦", 3: "👶", 4: "👖",
-            5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
-        }
-        return icons.get(intention_id, "🎯")
+    def get_intent_icon(self, intent_id):
+        return INTENTION_ICONS.get(intent_id, "🎯")
     
-    def get_article_image(self, article_id):
-        """Get image path for article"""
-        img_id = str(article_id).zfill(10)
-        img_path = os.path.join(self.images_path, f"{img_id}.jpg")
-        if os.path.exists(img_path):
-            return img_path
-        return None
-    
-    def get_all_users(self):
-        """Get list of all users"""
-        return sorted(list(self.user_purchases.keys()))
+    def get_users(self):
+        return sorted(list(self.user_purchases.keys()))[:100]
 
 
 # ============================================================================
 # UI COMPONENTS
 # ============================================================================
 def render_header():
-    """Render main header"""
     st.markdown("""
     <div class="main-header">
         <h1>👗 H&M Fashion Recommendation System</h1>
@@ -371,8 +365,6 @@ def render_header():
 
 
 def render_sidebar(engine):
-    """Render sidebar with user selection"""
-    
     st.sidebar.image(
         "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/H%26M-Logo.svg/1200px-H%26M-Logo.svg.png",
         use_container_width=True
@@ -381,151 +373,129 @@ def render_sidebar(engine):
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 👤 Customer Login")
     
-    # User selection
-    users = engine.get_all_users()
-    selected_user = st.sidebar.selectbox(
-        "Select a customer",
-        options=users,
-        index=0,
-        help="Choose a customer to see personalized recommendations"
-    )
+    users = engine.get_users()
+    if not users:
+        st.sidebar.warning("No users available")
+        return None
+    
+    selected_user = st.sidebar.selectbox("Select Customer ID", users)
     
     # User profile
+    dom_idx, dom_score = engine.get_dominant_intent(selected_user)
+    purchases = len(engine.user_purchases.get(selected_user, []))
+    
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📊 Your Profile")
-    
-    dominant_idx, dominant_score = engine.get_dominant_intention(selected_user)
-    purchases = len(engine.get_user_purchases(selected_user))
     
     col1, col2 = st.sidebar.columns(2)
     with col1:
         st.metric("🛒 Purchases", purchases)
     with col2:
-        st.metric("🎯 Confidence", f"{dominant_score:.0%}")
+        st.metric("🎯 Confidence", f"{dom_score:.0%}")
     
     st.sidebar.markdown(f"**Dominant Style:**")
-    st.sidebar.markdown(f"<span style='font-size:1.2rem;'>{engine.get_intention_icon(dominant_idx)} {engine.get_intention_name(dominant_idx)[:40]}</span>", 
-                        unsafe_allow_html=True)
+    st.sidebar.markdown(f"{engine.get_intent_icon(dom_idx)} **{engine.get_intent_name(dom_idx)[:40]}**")
     
-    # Confidence indicator
-    if dominant_score >= 0.6:
+    if dom_score >= 0.6:
         st.sidebar.success("✅ High confidence profile")
-    elif dominant_score >= 0.4:
+    elif dom_score >= 0.4:
         st.sidebar.warning("⚠️ Medium confidence profile")
     else:
-        st.sidebar.info("🔄 Cold-start profile (using global prior)")
+        st.sidebar.info("🔄 Cold-start profile")
     
     return selected_user
 
 
-def render_for_you_tab(engine, user_id):
-    """Render For You tab with personalized recommendations"""
+def render_product_card(article_id, article, score=None):
+    """Display a single product card with lazy-loaded image"""
     
+    # Load image on demand (cached)
+    img = load_image_cached(article_id)
+    
+    if img:
+        st.image(img, use_container_width=True)
+    else:
+        st.image("https://via.placeholder.com/180x240?text=H&M", use_container_width=True)
+    
+    st.markdown(f"<div class='product-title'>{article.get('prod_name', 'Unknown')[:45]}</div>", 
+                unsafe_allow_html=True)
+    st.markdown(f"<div class='product-type'>{article.get('product_type_name', '')}</div>", 
+                unsafe_allow_html=True)
+    
+    if score:
+        st.markdown(f"<div class='match-score'>Match: {score:.1%}</div>", unsafe_allow_html=True)
+    
+    # Intention badge
+    st.button("🔍 View Details", key=f"view_{article_id}", use_container_width=True)
+
+
+def render_for_you_tab(engine, user_id):
     st.markdown("### ✨ Personalized For You")
     st.markdown("Based on your unique style profile and purchase history")
     
-    with st.spinner("Finding your perfect matches..."):
-        recommendations = engine.recommend_by_intention(user_id, top_n=12)
-    
-    if not recommendations:
-        st.warning("No recommendations available. Try exploring by intention!")
+    if not user_id:
+        st.warning("Please select a customer from the sidebar")
         return
     
-    # Display in grid
+    with st.spinner("Finding your perfect matches..."):
+        recommendations = engine.recommend(user_id, top_n=12)
+    
+    if not recommendations:
+        st.warning("No recommendations available")
+        return
+    
     cols = st.columns(3)
     for idx, (article_id, score) in enumerate(recommendations):
-        article = engine.get_article_details(article_id)
-        
+        article = engine.get_article(article_id)
         with cols[idx % 3]:
-            # Product image
-            img_path = engine.get_article_image(article_id)
-            if img_path:
-                try:
-                    img = Image.open(img_path)
-                    st.image(img, use_container_width=True)
-                except:
-                    st.image("https://via.placeholder.com/200x250?text=H&M", use_container_width=True)
-            else:
-                st.image("https://via.placeholder.com/200x250?text=H&M", use_container_width=True)
-            
-            # Product info
-            st.markdown(f"<div class='product-title'>{article.get('prod_name', 'Unknown')[:50]}</div>", 
-                       unsafe_allow_html=True)
-            st.markdown(f"<div class='product-type'>{article.get('product_type_name', '')} | {article.get('department_name', '')}</div>", 
-                       unsafe_allow_html=True)
-            
-            # Intention badge
-            art_intent = engine.article_intent.get(article_id, np.zeros(10))
-            top_intent = np.argmax(art_intent)
-            st.markdown(f"<div class='intention-badge'>{engine.get_intention_icon(top_intent)} {engine.get_intention_name(top_intent)[:25]}</div>", 
-                       unsafe_allow_html=True)
-            st.markdown(f"<div class='match-score'>Match: {score:.1%}</div>", 
-                       unsafe_allow_html=True)
-            
-            st.button("🔍 View Details", key=f"view_{article_id}", use_container_width=True)
+            render_product_card(article_id, article, score)
 
 
 def render_explore_tab(engine):
-    """Render Explore by Intention tab"""
-    
     st.markdown("### 🔍 Shop by Intention")
     st.markdown("Discover products that match your shopping needs")
     
     # Intention grid
     cols = st.columns(5)
-    selected_intention = None
+    selected_intent = None
     
     for i in range(10):
         with cols[i % 5]:
             if st.button(
-                f"{engine.get_intention_icon(i)}\n{engine.get_intention_name(i)[:20]}", 
-                key=f"intent_{i}", 
+                f"{engine.get_intent_icon(i)}\n{engine.get_intent_name(i)[:20]}",
+                key=f"intent_{i}",
                 use_container_width=True
             ):
-                selected_intention = i
+                selected_intent = i
     
-    if selected_intention is not None:
+    if selected_intent is not None:
         st.markdown("---")
-        st.markdown(f"### {engine.get_intention_icon(selected_intention)} {engine.get_intention_name(selected_intention)}")
-        st.markdown(f"*{engine.get_intention_description(selected_intention)}*")
+        st.markdown(f"### {engine.get_intent_icon(selected_intent)} {engine.get_intent_name(selected_intent)}")
+        st.markdown(f"*{engine.get_intent_desc(selected_intent)}*")
         st.markdown("---")
         
         with st.spinner("Loading products..."):
-            products = engine.get_article_by_intention(selected_intention, top_n=12)
+            products = engine.get_by_intention(selected_intent, top_n=12)
         
         cols = st.columns(3)
         for idx, (article_id, score) in enumerate(products):
-            article = engine.get_article_details(article_id)
-            
+            article = engine.get_article(article_id)
             with cols[idx % 3]:
-                # Product image
-                img_path = engine.get_article_image(article_id)
-                if img_path:
-                    try:
-                        img = Image.open(img_path)
-                        st.image(img, use_container_width=True)
-                    except:
-                        st.image("https://via.placeholder.com/200x250?text=H&M", use_container_width=True)
-                else:
-                    st.image("https://via.placeholder.com/200x250?text=H&M", use_container_width=True)
-                
-                st.markdown(f"<div class='product-title'>{article.get('prod_name', 'Unknown')[:50]}</div>", 
-                           unsafe_allow_html=True)
-                st.markdown(f"<div class='product-type'>{article.get('product_type_name', '')}</div>", 
-                           unsafe_allow_html=True)
-                st.button("🛒 Add to Cart", key=f"explore_cart_{article_id}", use_container_width=True)
+                render_product_card(article_id, article)
 
 
 def render_profile_tab(engine, user_id):
-    """Render My Style Profile tab"""
-    
     st.markdown("### 🎯 Your Style Profile")
     st.markdown("Your personal fashion identity based on your purchase history")
     
-    user_intent = engine.get_user_intention(user_id)
+    if not user_id:
+        st.warning("Please select a customer from the sidebar")
+        return
+    
+    user_intent = engine.get_user_intent(user_id)
     
     # Radar chart
-    categories = [engine.get_intention_name(i)[:20] for i in range(10)]
+    categories = [engine.get_intent_name(i)[:20] for i in range(10)]
     
     fig = go.Figure(data=go.Scatterpolar(
         r=user_intent.tolist(),
@@ -538,16 +508,12 @@ def render_profile_tab(engine, user_id):
     
     fig.update_layout(
         polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, max(user_intent) * 1.1],
-                tickformat='.0%'
-            )
+            radialaxis=dict(visible=True, range=[0, max(user_intent) * 1.1], tickformat='.0%')
         ),
         showlegend=True,
         title="Your 10-Dimensional Intention Profile",
         height=550,
-        margin=dict(l=80, r=80, t=80, b=80)
+        margin=dict(l=60, r=60, t=60, b=60)
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -562,33 +528,35 @@ def render_profile_tab(engine, user_id):
             st.markdown(f"""
             <div style="background: linear-gradient(135deg, #4B86C9 0%, #6EA8D9 100%); 
                         border-radius: 12px; padding: 1rem; text-align: center; color: white;">
-                <div style="font-size: 2.5rem;">{engine.get_intention_icon(intent_idx)}</div>
-                <div style="font-weight: bold; margin: 0.5rem 0;">{engine.get_intention_name(intent_idx)[:50]}</div>
+                <div style="font-size: 2.5rem;">{engine.get_intent_icon(intent_idx)}</div>
+                <div style="font-weight: bold; margin: 0.5rem 0;">{engine.get_intent_name(intent_idx)[:40]}</div>
                 <div style="font-size: 1.5rem; font-weight: bold;">{user_intent[intent_idx]:.1%}</div>
             </div>
             """, unsafe_allow_html=True)
     
     # Purchase history
     st.markdown("### 📜 Your Purchase History")
-    purchases = engine.get_user_purchases(user_id)
+    purchases = engine.user_purchases.get(user_id, [])
     st.markdown(f"**Total purchases:** {len(purchases)} items")
     
     if purchases:
         recent = purchases[-5:]
         st.markdown("**Recent items:**")
         for aid in recent:
-            article = engine.get_article_details(aid)
+            article = engine.get_article(aid)
             if article:
                 st.markdown(f"- {article.get('prod_name', 'Unknown')} *({article.get('product_type_name', '')})*")
 
 
 def render_account_tab(engine, user_id):
-    """Render My Account tab"""
-    
     st.markdown("### 👤 My Account")
     
-    purchases = engine.get_user_purchases(user_id)
-    dominant_idx, dominant_score = engine.get_dominant_intention(user_id)
+    if not user_id:
+        st.warning("Please select a customer from the sidebar")
+        return
+    
+    purchases = engine.user_purchases.get(user_id, [])
+    dom_idx, dom_score = engine.get_dominant_intent(user_id)
     
     col1, col2 = st.columns(2)
     
@@ -608,8 +576,8 @@ def render_account_tab(engine, user_id):
         <div class="metric-card">
             <h4>📊 Shopping Stats</h4>
             <p><strong>Total Purchases:</strong> {len(purchases)}</p>
-            <p><strong>Dominant Style:</strong> {engine.get_intention_name(dominant_idx)[:40]}</p>
-            <p><strong>Profile Confidence:</strong> {dominant_score:.1%}</p>
+            <p><strong>Dominant Style:</strong> {engine.get_intent_name(dom_idx)[:40]}</p>
+            <p><strong>Profile Confidence:</strong> {dom_score:.1%}</p>
             <p><strong>Wishlist Items:</strong> 0</p>
         </div>
         """, unsafe_allow_html=True)
@@ -619,24 +587,22 @@ def render_account_tab(engine, user_id):
     
     col1, col2 = st.columns(2)
     with col1:
-        email_notif = st.checkbox("📧 Email me about new arrivals", value=True)
-        sale_notif = st.checkbox("🏷️ Sale notifications", value=True)
+        st.checkbox("📧 Email me about new arrivals", value=True)
+        st.checkbox("🏷️ Sale notifications", value=True)
     with col2:
-        rec_notif = st.checkbox("🎯 Personalized recommendations", value=True)
-        newsletter = st.checkbox("📰 Style tips newsletter", value=False)
+        st.checkbox("🎯 Personalized recommendations", value=True)
+        st.checkbox("📰 Style tips newsletter", value=False)
     
     if st.button("💾 Save Preferences", use_container_width=True):
         st.success("✅ Preferences saved successfully!")
 
 
 def render_footer():
-    """Render footer"""
     st.markdown("---")
     st.markdown("""
-    <div style="text-align: center; color: #999; font-size: 0.75rem; padding: 1rem;">
+    <div style="text-align: center; color: #999; font-size: 0.7rem; padding: 1rem;">
         <p>👗 H&M Fashion Recommendation System | Three-Tower Neural Network | Intention-Aware AI</p>
-        <p>📊 Model Performance: AUC 0.8201 (+3.54% vs Two-Tower) | 10 Intention Categories | Bayesian User Profiling</p>
-        <p>🔬 Powered by ResNet-50, BLIP, Sentence-BERT, LDA (K=10), and Three-Tower Neural Network</p>
+        <p>📊 AUC 0.8201 (+3.54% vs Two-Tower) | 10 Intention Categories | Bayesian User Profiling</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -645,43 +611,22 @@ def render_footer():
 # MAIN APP
 # ============================================================================
 def main():
-    """Main application entry point"""
-    
-    # Initialize session state
-    if 'data_loaded' not in st.session_state:
-        st.session_state.data_loaded = False
+    render_header()
     
     # Load data
     data = load_data()
-    
     if data is None:
-        st.error("""
-        ### ⚠️ Unable to load data
-        
-        Please check:
-        1. Your internet connection
-        2. Google Drive file permissions
-        3. Try refreshing the page
-        
-        If the problem persists, please contact support.
-        """)
-        return
+        st.stop()
     
-    # Initialize recommendation engine
+    # Initialize engine
     engine = RecommendationEngine(data)
-    
-    # Render UI
-    render_header()
     
     # Sidebar
     selected_user = render_sidebar(engine)
     
     # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "👗 FOR YOU", 
-        "🔍 EXPLORE BY INTENTION", 
-        "🎯 MY STYLE PROFILE", 
-        "👤 MY ACCOUNT"
+        "👗 FOR YOU", "🔍 EXPLORE BY INTENTION", "🎯 MY STYLE PROFILE", "👤 MY ACCOUNT"
     ])
     
     with tab1:
@@ -696,7 +641,6 @@ def main():
     with tab4:
         render_account_tab(engine, selected_user)
     
-    # Footer
     render_footer()
 
 
