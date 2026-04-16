@@ -1,5 +1,5 @@
 # ============================================================================
-# H&M FASHION RECOMMENDATION SYSTEM - INTERACTIVE E-COMMERCE UI
+# H&M FASHION RECOMMENDATION SYSTEM - FINAL INTERACTIVE E-COMMERCE
 # ============================================================================
 
 import streamlit as st
@@ -19,13 +19,13 @@ import subprocess
 # PAGE CONFIGURATION
 # ============================================================================
 st.set_page_config(
-    page_title="H&M Fashion | Interactive Shopping",
+    page_title="H&M Fashion | Smart Recommendations",
     page_icon="👗",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state for navigation and interaction
+# Initialize session state
 if 'selected_article' not in st.session_state:
     st.session_state.selected_article = None
 if 'view_history' not in st.session_state:
@@ -53,11 +53,6 @@ INTENTION_NAMES = {
     5: "Trendy Casual", 6: "Accessories", 7: "Intimate Care", 8: "Premium Knitwear", 9: "Professional"
 }
 
-INTENTION_ICONS = {
-    0: "👗", 1: "👕", 2: "🧦", 3: "👶", 4: "👖",
-    5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
-}
-
 COLORS = {
     'primary': '#E50010', 'secondary': '#000000', 'bg_light': '#F9F9F9',
     'text_main': '#222222', 'text_muted': '#666666', 'border': '#EEEEEE', 'white': '#FFFFFF'
@@ -69,40 +64,24 @@ COLORS = {
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
-    
     html, body, [class*="css"] {{ font-family: 'Montserrat', sans-serif; color: {COLORS['text_main']}; }}
     .main .block-container {{ padding-top: 1rem; max-width: 1200px; }}
-
-    /* Header */
-    .header-container {{ display: flex; justify-content: center; align-items: center; padding: 1.5rem 0; margin-bottom: 1rem; border-bottom: 2px solid {COLORS['secondary']}; }}
+    .header-container {{ display: flex; justify-content: center; align-items: center; padding: 1rem 0; margin-bottom: 1rem; border-bottom: 2px solid {COLORS['secondary']}; }}
     .brand-logo {{ font-size: 2.5rem; font-weight: 800; color: {COLORS['primary']}; letter-spacing: -2px; cursor: pointer; }}
-
-    /* Product Card */
-    .product-card {{ background: {COLORS['white']}; transition: transform 0.3s ease; position: relative; margin-bottom: 20px; cursor: pointer; border: 1px solid transparent; }}
+    .product-card {{ background: {COLORS['white']}; transition: transform 0.3s ease; position: relative; margin-bottom: 20px; border: 1px solid transparent; }}
     .product-card:hover {{ transform: translateY(-5px); border-color: {COLORS['border']}; }}
-    
     .image-container {{ width: 100%; aspect-ratio: 2/3; overflow: hidden; background: #f0f0f0; position: relative; display: flex; align-items: center; justify-content: center; }}
     .similarity-badge {{ position: absolute; top: 10px; right: 10px; background: rgba(229, 0, 16, 0.9); padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white; z-index: 10; }}
-    
     .product-details {{ padding: 10px 0; }}
     .product-title {{ font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
     .product-price {{ font-size: 0.95rem; font-weight: 700; color: {COLORS['secondary']}; }}
-    
-    /* Section Title */
     .section-title {{ font-size: 1.2rem; font-weight: 700; margin: 1.5rem 0 1rem 0; text-transform: uppercase; letter-spacing: 1px; border-left: 4px solid {COLORS['primary']}; padding-left: 12px; }}
-
-    /* Detail View */
     .detail-container {{ display: flex; gap: 40px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 40px; }}
-    .detail-image {{ flex: 1; max-width: 450px; }}
-    .detail-info {{ flex: 1.2; }}
-    .detail-title {{ font-size: 2rem; font-weight: 700; margin-bottom: 10px; }}
-    .detail-price {{ font-size: 1.5rem; font-weight: 700; color: {COLORS['primary']}; margin-bottom: 20px; }}
-    .detail-desc {{ font-size: 1rem; line-height: 1.6; color: {COLORS['text_muted']}; margin-bottom: 20px; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING & ENGINE
+# DATA ENGINE
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def load_data_from_drive():
@@ -137,10 +116,14 @@ class RecommendationEngine:
             self.user_history.setdefault(uid, []).append(aid)
         self.article_meta_dict = {str(row['article_id']): row.to_dict() for _, row in self.article_df.iterrows()}
 
+    def get_available_users(self):
+        # Crucial fix for the AttributeError
+        return sorted(list(self.user_intent_dict.keys()))
+
     def get_user_intention(self, user_id):
         return self.user_intent_dict.get(user_id, np.ones(10) / 10)
 
-    def recommend_for_user(self, user_id, top_n=12):
+    def recommend_for_user(self, user_id, top_n=20):
         user_intent = self.get_user_intention(user_id)
         return self._get_similar_articles(user_intent, top_n)
 
@@ -155,6 +138,7 @@ class RecommendationEngine:
             if aid != exclude_id:
                 article_ids.append(aid)
                 intentions.append(intent)
+        if not intentions: return []
         similarities = cosine_similarity([target_intent], intentions)[0]
         results = sorted(zip(article_ids, similarities), key=lambda x: x[1], reverse=True)[:top_n]
         return results
@@ -169,21 +153,14 @@ class RecommendationEngine:
         return None
 
 # ============================================================================
-# UI COMPONENTS
+# UI FUNCTIONS
 # ============================================================================
-def select_product(article_id):
-    st.session_state.selected_article = article_id
-    if article_id not in st.session_state.view_history:
-        st.session_state.view_history.insert(0, article_id)
-    st.rerun()
-
 def render_product_card(engine, article_id, score=None):
     details = engine.get_article_details(article_id)
     if not details: return
     img_path = engine.get_article_image_path(article_id)
     price = f"{(int(article_id) % 50) + 9.99:.2f}"
     
-    # We use a button-styled card for interactivity
     with st.container():
         st.markdown('<div class="product-card">', unsafe_allow_html=True)
         st.markdown('<div class="image-container">', unsafe_allow_html=True)
@@ -193,7 +170,7 @@ def render_product_card(engine, article_id, score=None):
         if img_path and os.path.exists(img_path):
             st.image(Image.open(img_path), use_container_width=True)
         else:
-            st.markdown(f"<div style='color:#ccc;'>No Image</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#ccc;font-size:10px;'>{article_id}</div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown(f"""
@@ -204,93 +181,70 @@ def render_product_card(engine, article_id, score=None):
         """, unsafe_allow_html=True)
         
         if st.button("View Details", key=f"btn_{article_id}", use_container_width=True):
-            select_product(article_id)
+            st.session_state.selected_article = article_id
+            if article_id not in st.session_state.view_history:
+                st.session_state.view_history.insert(0, article_id)
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-def render_detail_view(engine, article_id):
-    details = engine.get_article_details(article_id)
-    if not details: return
-    
-    if st.button("← Back to Shopping"):
-        st.session_state.selected_article = None
-        st.rerun()
-
-    img_path = engine.get_article_image_path(article_id)
-    price = f"{(int(article_id) % 50) + 9.99:.2f}"
-    
-    st.markdown('<div class="detail-container">', unsafe_allow_html=True)
-    
-    # Left: Image
-    col1, col2 = st.columns([1, 1.2])
-    with col1:
-        if img_path and os.path.exists(img_path):
-            st.image(Image.open(img_path), use_container_width=True)
-        else:
-            st.info("Product image not available.")
-    
-    # Right: Info
-    with col2:
-        st.markdown(f"<div class='detail-title'>{details.get('prod_name')}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='detail-price'>${price}</div>", unsafe_allow_html=True)
-        st.markdown(f"**Category:** {details.get('product_type_name')} | {details.get('product_group_name')}")
-        st.markdown(f"**Color:** {details.get('colour_group_name')}")
-        st.markdown(f"<div class='detail-desc'>{details.get('detail_desc')}</div>", unsafe_allow_html=True)
-        
-        if st.button("🛒 ADD TO BAG", use_container_width=True):
-            st.success("Added to your shopping bag!")
-
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Recommendations based on this item (Item-to-Item)
-    st.markdown("<div class='section-title'>Customers also viewed</div>", unsafe_allow_html=True)
-    with st.spinner("Finding similar styles..."):
-        similars = engine.recommend_similar_items(article_id)
-        if similars:
-            cols = st.columns(4)
-            for idx, (aid, score) in enumerate(similars):
-                with cols[idx % 4]:
-                    render_product_card(engine, aid, score=score)
-
 def main():
-    # Load Engine
     try:
         data_path = load_data_from_drive()
         engine = RecommendationEngine(data_path)
-    except:
-        st.error("Failed to load data.")
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
         return
 
-    # Sidebar Login
+    # Sidebar
     with st.sidebar:
         st.markdown(f"<h2 style='color:{COLORS['primary']};'>Member Club</h2>", unsafe_allow_html=True)
-        login_mode = st.radio("Login", ["List", "ID"])
-        if login_mode == "List":
-            user_id = st.selectbox("Customer:", options=engine.get_available_users())
-        else:
-            user_id = st.text_input("Customer ID:", value=engine.get_available_users()[0])
+        users = engine.get_available_users()
+        user_id = st.selectbox("Select Customer:", options=users)
         
         if st.session_state.view_history:
             st.markdown("---")
             st.markdown("### Recently Viewed")
             for aid in st.session_state.view_history[:5]:
                 d = engine.get_article_details(aid)
-                if st.sidebar.button(f"• {d.get('prod_name')[:20]}...", key=f"hist_{aid}"):
-                    select_product(aid)
+                if st.sidebar.button(f"• {d.get('prod_name')[:20]}", key=f"hist_{aid}"):
+                    st.session_state.selected_article = aid
+                    st.rerun()
 
-    # Main Header
+    # Header
     st.markdown('<div class="header-container"><div class="brand-logo" onclick="window.location.reload()">H&M</div></div>', unsafe_allow_html=True)
 
-    # Content Logic
+    # Main Content
     if st.session_state.selected_article:
-        render_detail_view(engine, st.session_state.selected_article)
+        # Detail View
+        article_id = st.session_state.selected_article
+        details = engine.get_article_details(article_id)
+        if st.button("← Back to Shopping"):
+            st.session_state.selected_article = None
+            st.rerun()
+            
+        col1, col2 = st.columns([1, 1.2])
+        img_path = engine.get_article_image_path(article_id)
+        with col1:
+            if img_path: st.image(Image.open(img_path), use_container_width=True)
+            else: st.info("No Image")
+        with col2:
+            st.markdown(f"## {details.get('prod_name')}")
+            st.markdown(f"### ${ (int(article_id) % 50) + 9.99:.2f}")
+            st.write(f"**Description:** {details.get('detail_desc')}")
+            st.button("🛒 ADD TO BAG", use_container_width=True)
+
+        st.markdown("<div class='section-title'>Similar Items You'll Love</div>", unsafe_allow_html=True)
+        similars = engine.recommend_similar_items(article_id)
+        cols = st.columns(4)
+        for idx, (aid, score) in enumerate(similars):
+            with cols[idx % 4]: render_product_card(engine, aid, score=score)
     else:
-        # Home Page: Personalized Recommendations
-        st.markdown(f"<div class='section-title'>Recommended For You</div>", unsafe_allow_html=True)
-        recs = engine.recommend_for_user(user_id, top_n=20)
+        # Home View
+        st.markdown(f"<div class='section-title'>Curated For You</div>", unsafe_allow_html=True)
+        recs = engine.recommend_for_user(user_id)
         cols = st.columns(4)
         for idx, (aid, score) in enumerate(recs):
-            with cols[idx % 4]:
-                render_product_card(engine, aid, score=score)
+            with cols[idx % 4]: render_product_card(engine, aid, score=score)
 
 if __name__ == "__main__":
     main()
