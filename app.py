@@ -1,5 +1,5 @@
 # ============================================================================
-# H&M FASHION
+# H&M FASHION MARKETPLACE - FIXED IMAGE LOADING
 # ============================================================================
 
 import streamlit as st
@@ -25,9 +25,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Initialize session state for the Guest experience
+# Initialize session state
 if 'current_intent_vector' not in st.session_state:
-    # Default intent vector (balanced/neutral)
     st.session_state.current_intent_vector = np.ones(10) / 10
 if 'view_history' not in st.session_state:
     st.session_state.view_history = []
@@ -37,7 +36,7 @@ if 'cart' not in st.session_state:
     st.session_state.cart = []
 
 # ============================================================================
-# CONSTANTS & COLORS (Shopee/Lazada Inspired)
+# CONSTANTS
 # ============================================================================
 FILE_IDS = {
     'article_metadata.csv': '1RjZmAdpGvQCQHeKpEL30dlTyRenWU1GY',
@@ -55,9 +54,8 @@ INTENTION_NAMES = {
     5: "Kids", 6: "Accessories", 7: "Lingerie", 8: "Knitwear", 9: "Men"
 }
 
-# Shopee-like Orange/Red Palette
 COLORS = {
-    'primary': '#ee4d2d', # Shopee Orange
+    'primary': '#ee4d2d',
     'secondary': '#fb5533',
     'bg_gray': '#f5f5f5',
     'white': '#ffffff',
@@ -67,57 +65,14 @@ COLORS = {
 }
 
 # ============================================================================
-# CUSTOM CSS (Marketplace UI)
+# CUSTOM CSS
 # ============================================================================
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
-    
-    html, body, [class*="css"] {{
-        font-family: 'Roboto', sans-serif;
-        background-color: {COLORS['bg_gray']};
-    }}
-
-    /* Shopee Header */
+    html, body, [class*="css"] {{ font-family: 'Roboto', sans-serif; background-color: {COLORS['bg_gray']}; }}
     .stApp {{ background-color: {COLORS['bg_gray']}; }}
     
-    .header-bar {{
-        background: linear-gradient(-180deg,#f53d2d,#f63);
-        padding: 15px 10%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        color: white;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1000;
-        height: 80px;
-    }}
-    
-    .search-container {{
-        flex-grow: 1;
-        margin: 0 40px;
-        position: relative;
-    }}
-    
-    .search-input {{
-        width: 100%;
-        padding: 10px 15px;
-        border-radius: 2px;
-        border: none;
-        font-size: 14px;
-    }}
-
-    /* Product Grid Lazada Style */
-    .product-grid {{
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-        gap: 12px;
-        padding: 20px 0;
-    }}
-
     .product-card {{
         background: white;
         border-radius: 2px;
@@ -125,15 +80,12 @@ st.markdown(f"""
         transition: transform 0.2s, box-shadow 0.2s;
         cursor: pointer;
         border: 1px solid transparent;
-        position: relative;
     }}
-    
     .product-card:hover {{
         transform: translateY(-2px);
         box-shadow: 0 2px 12px rgba(0,0,0,0.12);
         border-color: {COLORS['primary']};
     }}
-
     .img-box {{
         width: 100%;
         aspect-ratio: 1/1;
@@ -143,11 +95,7 @@ st.markdown(f"""
         justify-content: center;
         overflow: hidden;
     }}
-
-    .product-info {{
-        padding: 8px;
-    }}
-
+    .product-info {{ padding: 8px; }}
     .product-name {{
         font-size: 12px;
         line-height: 14px;
@@ -159,22 +107,10 @@ st.markdown(f"""
         margin-bottom: 8px;
         color: {COLORS['text']};
     }}
-
-    .product-price-box {{
-        display: flex;
-        align-items: baseline;
-    }}
-
+    .product-price-box {{ display: flex; align-items: baseline; }}
     .currency {{ font-size: 12px; color: {COLORS['primary']}; }}
     .price {{ font-size: 16px; font-weight: 500; color: {COLORS['primary']}; }}
-    
-    .sold-count {{
-        font-size: 10px;
-        color: {COLORS['text_muted']};
-        margin-top: 4px;
-    }}
-
-    /* Banner */
+    .sold-count {{ font-size: 10px; color: {COLORS['text_muted']}; margin-top: 4px; }}
     .banner {{
         width: 100%;
         height: 300px;
@@ -188,52 +124,57 @@ st.markdown(f"""
         font-weight: 700;
         margin-bottom: 20px;
     }}
-
-    /* Category Icon */
-    .cat-item {{
-        text-align: center;
-        padding: 10px;
-        background: white;
-        border: 1px solid {COLORS['border']};
-        cursor: pointer;
-    }}
-    .cat-item:hover {{ color: {COLORS['primary']}; }}
-
-    /* Fix Streamlit spacing */
     .block-container {{ padding-top: 2rem !important; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA ENGINE (Cold Start Optimized)
+# DATA LOADING
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def load_data():
+    """Download and extract data from Google Drive"""
     temp_dir = tempfile.mkdtemp()
     data_dir = os.path.join(temp_dir, 'data')
     images_dir = os.path.join(temp_dir, 'images')
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(images_dir, exist_ok=True)
     
+    # Download data files
     for filename, file_id in FILE_IDS.items():
         gdown.download(f"https://drive.google.com/uc?id={file_id}", os.path.join(data_dir, filename), quiet=True)
     
-    os.chdir(images_dir)
-    subprocess.run(["gdown", f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}", "--folder", "--quiet"], capture_output=True)
+    # Download images folder - with better error handling
+    try:
+        os.chdir(images_dir)
+        subprocess.run(["gdown", f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}", "--folder", "--quiet"], capture_output=True)
+    except Exception as e:
+        print(f"Image download warning: {e}")
+    
     return temp_dir
 
+# ============================================================================
+# MARKETPLACE ENGINE
+# ============================================================================
 class MarketplaceEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.images_dir = os.path.join(data_dir, 'images')
+        
         self.article_df = pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
         self.article_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
         self.intention_cols = [f'intention_{i}' for i in range(10)]
         self._build_mappings()
     
     def _build_mappings(self):
-        self.article_intent_dict = {str(row['article_id']): row[self.intention_cols].values.astype(np.float32) for _, row in self.article_intentions.iterrows()}
-        self.article_meta_dict = {str(row['article_id']): row.to_dict() for _, row in self.article_df.iterrows()}
+        self.article_intent_dict = {
+            str(row['article_id']): row[self.intention_cols].values.astype(np.float32)
+            for _, row in self.article_intentions.iterrows()
+        }
+        self.article_meta_dict = {
+            str(row['article_id']): row.to_dict()
+            for _, row in self.article_df.iterrows()
+        }
 
     def get_recommendations(self, intent_vector, top_n=30):
         article_ids, intentions = [], []
@@ -249,19 +190,29 @@ class MarketplaceEngine:
         return self.article_meta_dict.get(str(article_id))
 
     def get_image_path(self, article_id):
+        """Find image path - searches all subdirectories"""
         img_id = str(article_id).zfill(10)
-        for root, _, files in os.walk(self.images_dir):
-            if f"{img_id}.jpg" in files: return os.path.join(root, f"{img_id}.jpg")
+        
+        # Search recursively
+        for root, dirs, files in os.walk(self.images_dir):
+            for file in files:
+                if file == f"{img_id}.jpg" or file.startswith(img_id):
+                    return os.path.join(root, file)
+        
+        # Try direct path
+        direct_path = os.path.join(self.images_dir, f"{img_id}.jpg")
+        if os.path.exists(direct_path):
+            return direct_path
+        
         return None
 
 # ============================================================================
 # UI RENDERERS
 # ============================================================================
 def render_marketplace_header():
-    # Simulated Shopee Header
     st.markdown(f"""
         <div style="background-color: {COLORS['primary']}; padding: 10px 5%; display: flex; align-items: center; justify-content: space-between; color: white;">
-            <div style="font-size: 24px; font-weight: 800; cursor: pointer;" onclick="window.location.reload()">H&M Marketplace</div>
+            <div style="font-size: 24px; font-weight: 800;">H&M Marketplace</div>
             <div style="flex-grow: 1; margin: 0 30px;">
                 <input type="text" placeholder="Search for fashion..." style="width: 100%; padding: 8px 15px; border: none; border-radius: 2px;">
             </div>
@@ -275,9 +226,17 @@ def render_marketplace_header():
 
 def render_product_card(engine, article_id, score=None):
     details = engine.get_article_details(article_id)
-    if not details: return
+    if not details:
+        return
     
     img_path = engine.get_image_path(article_id)
+    
+    # Placeholder image if not found
+    if img_path is None or not os.path.exists(img_path):
+        img_url = "https://via.placeholder.com/300x400?text=No+Image"
+    else:
+        img_url = img_path
+    
     price = f"{(int(article_id) % 100) + 19.99:.2f}"
     sold = (int(article_id) % 500) + 10
     
@@ -287,15 +246,19 @@ def render_product_card(engine, article_id, score=None):
                 <div class="img-box">
         """, unsafe_allow_html=True)
         
+        # Display image
         if img_path and os.path.exists(img_path):
-            st.image(Image.open(img_path), use_container_width=True)
+            try:
+                st.image(Image.open(img_path), use_container_width=True)
+            except Exception as e:
+                st.image("https://via.placeholder.com/300x400?text=Error", use_container_width=True)
         else:
-            st.markdown("<div style='color:#ccc; font-size:10px;'>No Image</div>", unsafe_allow_html=True)
+            st.image("https://via.placeholder.com/300x400?text=H&M", use_container_width=True)
             
         st.markdown(f"""
                 </div>
                 <div class="product-info">
-                    <div class="product-name">{details.get('prod_name')}</div>
+                    <div class="product-name">{details.get('prod_name', 'Unknown')[:50]}</div>
                     <div class="product-price-box">
                         <span class="currency">$</span><span class="price">{price}</span>
                     </div>
@@ -305,18 +268,16 @@ def render_product_card(engine, article_id, score=None):
         """, unsafe_allow_html=True)
         
         if st.button("Details", key=f"btn_{article_id}", use_container_width=True):
-            # Update user intent based on clicked item (Bayesian Cold Start Logic)
             clicked_intent = engine.article_intent_dict.get(str(article_id))
             if clicked_intent is not None:
-                # Bayesian Update: Mix current intent with clicked intent
                 st.session_state.current_intent_vector = (st.session_state.current_intent_vector * 0.4) + (clicked_intent * 0.6)
-            
             st.session_state.selected_article = article_id
             st.rerun()
 
 def render_detail_view(engine, article_id):
     details = engine.get_article_details(article_id)
-    if not details: return
+    if not details:
+        return
     
     if st.button("← Back to Home"):
         st.session_state.selected_article = None
@@ -327,16 +288,21 @@ def render_detail_view(engine, article_id):
     price = f"{(int(article_id) % 100) + 19.99:.2f}"
     
     with col1:
-        if img_path: st.image(Image.open(img_path), use_container_width=True)
-        else: st.info("Image not available")
+        if img_path and os.path.exists(img_path):
+            try:
+                st.image(Image.open(img_path), use_container_width=True)
+            except:
+                st.image("https://via.placeholder.com/300x400?text=H&M", use_container_width=True)
+        else:
+            st.image("https://via.placeholder.com/300x400?text=H&M", use_container_width=True)
         
     with col2:
-        st.markdown(f"# {details.get('prod_name')}")
+        st.markdown(f"# {details.get('prod_name', 'Unknown')}")
         st.markdown(f"<h2 style='color:{COLORS['primary']}'>${price}</h2>", unsafe_allow_html=True)
         st.markdown("---")
-        st.write(f"**Category:** {details.get('product_type_name')}")
-        st.write(f"**Group:** {details.get('product_group_name')}")
-        st.write(f"**Description:** {details.get('detail_desc')}")
+        st.write(f"**Category:** {details.get('product_type_name', 'N/A')}")
+        st.write(f"**Group:** {details.get('product_group_name', 'N/A')}")
+        st.write(f"**Description:** {details.get('detail_desc', 'No description')}")
         
         st.markdown("### 🚚 Shipping")
         st.caption("Free shipping for orders over $50")
@@ -346,19 +312,21 @@ def render_detail_view(engine, article_id):
 
     st.markdown("---")
     st.markdown("### YOU MAY ALSO LIKE")
-    # Item-to-Item recommendations
     similars = engine.get_recommendations(engine.article_intent_dict[str(article_id)], top_n=12)
     cols = st.columns(6)
-    for idx, (aid, _) in enumerate(similars[1:]): # skip self
+    for idx, (aid, _) in enumerate(similars[1:]):
         with cols[idx % 6]:
             render_product_card(engine, aid)
 
+# ============================================================================
+# MAIN
+# ============================================================================
 def main():
     try:
         data_path = load_data()
         engine = MarketplaceEngine(data_path)
-    except:
-        st.error("Data loading failed.")
+    except Exception as e:
+        st.error(f"Data loading failed: {str(e)}")
         return
 
     render_marketplace_header()
@@ -366,23 +334,21 @@ def main():
     if st.session_state.selected_article:
         render_detail_view(engine, st.session_state.selected_article)
     else:
-        # Home Page Components
-        # 1. Banner
+        # Banner
         st.markdown('<div class="banner">H&M NEW SEASON: UP TO 50% OFF</div>', unsafe_allow_html=True)
         
-        # 2. Categories
+        # Categories
         st.markdown("### CATEGORIES")
         cat_cols = st.columns(10)
         for i in range(10):
             with cat_cols[i]:
                 if st.button(f"{INTENTION_NAMES[i]}", key=f"cat_{i}", use_container_width=True):
-                    # Filter by intent
                     new_intent = np.zeros(10)
                     new_intent[i] = 1.0
                     st.session_state.current_intent_vector = new_intent
                     st.rerun()
 
-        # 3. Personalized Feed (Cold Start)
+        # Personalized Feed
         st.markdown("### DAILY DISCOVER")
         recs = engine.get_recommendations(st.session_state.current_intent_vector, top_n=30)
         
