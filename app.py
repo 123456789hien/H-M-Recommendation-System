@@ -1,7 +1,7 @@
 # ============================================================================
 # H&M FASHION RECOMMENDATION SYSTEM
 # ============================================================================
-# Production-ready Streamlit app with image optimization
+# Production-ready Streamlit app with fixed Google Drive download
 # AUC 0.8201 | Three-Tower Neural Network | Intention-Aware AI
 # ============================================================================
 
@@ -12,12 +12,9 @@ import json
 import os
 import zipfile
 import tempfile
-import time
 from PIL import Image
-from io import BytesIO
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
-import gdown
 import requests
 
 # ============================================================================
@@ -35,7 +32,6 @@ st.set_page_config(
 # ============================================================================
 st.markdown("""
 <style>
-    /* Header */
     .main-header {
         background: linear-gradient(135deg, #4B86C9 0%, #6EA8D9 100%);
         padding: 1.5rem;
@@ -52,8 +48,6 @@ st.markdown("""
         margin: 0.5rem 0 0 0;
         opacity: 0.9;
     }
-    
-    /* Product card */
     .product-card {
         background: white;
         border-radius: 12px;
@@ -92,8 +86,6 @@ st.markdown("""
         color: #4B86C9;
         font-weight: bold;
     }
-    
-    /* Intention card */
     .intention-card {
         background: linear-gradient(135deg, #BECDE0 0%, #D0DCE8 100%);
         border-radius: 12px;
@@ -116,13 +108,6 @@ st.markdown("""
         font-size: 0.7rem;
         font-weight: 600;
     }
-    
-    /* Sidebar */
-    .css-1d391kg {
-        background-color: #f8f9fa;
-    }
-    
-    /* Buttons */
     .stButton > button {
         background-color: #4B86C9;
         color: white;
@@ -135,19 +120,12 @@ st.markdown("""
         background-color: #3a6ba0;
         transform: translateY(-1px);
     }
-    
-    /* Metrics */
     .metric-card {
         background: white;
         border-radius: 10px;
         padding: 1rem;
         text-align: center;
         border: 1px solid #e0e0e0;
-    }
-    
-    /* Loading */
-    .stSpinner > div {
-        border-top-color: #4B86C9 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -159,37 +137,63 @@ GOOGLE_DRIVE_FILE_ID = "1-wRrYq1f5R8XAMoVJHB8S_dt8MbfilcH"
 DATA_DIR = tempfile.gettempdir() + "/hm_app_data"
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
-# Intention icons
 INTENTION_ICONS = {
     0: "👗", 1: "👕", 2: "🧦", 3: "👶", 4: "👖",
     5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
 }
 
 # ============================================================================
+# DOWNLOAD FUNCTION (FIXED)
+# ============================================================================
+def download_file_from_google_drive(file_id, destination):
+    """Download file from Google Drive using requests (more reliable than gdown)"""
+    
+    URL = "https://drive.google.com/uc?export=download"
+    
+    session = requests.Session()
+    response = session.get(URL, params={'id': file_id}, stream=True)
+    
+    # Check for download warning page (Google's confirmation)
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            params = {'id': file_id, 'confirm': value}
+            response = session.get(URL, params=params, stream=True)
+            break
+    
+    # Save file
+    with open(destination, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    
+    return destination
+
+
+# ============================================================================
 # IMAGE LOADING (OPTIMIZED)
 # ============================================================================
 @st.cache_data(ttl=3600, max_entries=200, show_spinner=False)
 def load_image_cached(article_id):
-    """Load and cache image with size limit - only 200 most recent images kept"""
+    """Load and cache image - only 200 most recent images kept"""
     img_id = str(article_id).zfill(10)
     img_path = os.path.join(IMAGES_DIR, f"{img_id}.jpg")
     
     if os.path.exists(img_path):
         try:
             img = Image.open(img_path)
-            # Resize immediately to reduce memory footprint
             img.thumbnail((180, 240), Image.Resampling.LANCZOS)
             return img
         except Exception:
             return None
     return None
 
+
 # ============================================================================
 # DATA LOADING
 # ============================================================================
 @st.cache_resource(ttl=3600, show_spinner=False)
 def load_data():
-    """Load data from Google Drive with caching"""
+    """Load data from Google Drive with fixed download method"""
     
     data_path = os.path.join(DATA_DIR, "data")
     
@@ -198,14 +202,15 @@ def load_data():
         return load_csv_data(data_path)
     
     # Download and extract
-    with st.spinner("📥 Loading data (first time only, please wait)..."):
+    with st.spinner("📥 Loading data (first time only, please wait 2-3 minutes)..."):
         try:
             os.makedirs(DATA_DIR, exist_ok=True)
             zip_path = os.path.join(DATA_DIR, "data.zip")
             
-            url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
-            gdown.download(url, zip_path, quiet=True)
+            # Download using fixed method
+            download_file_from_google_drive(GOOGLE_DRIVE_FILE_ID, zip_path)
             
+            # Extract
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 zf.extractall(DATA_DIR)
             
@@ -215,6 +220,7 @@ def load_data():
             
         except Exception as e:
             st.error(f"❌ Failed to load data: {str(e)}")
+            st.info("💡 Troubleshooting:\n1. Make sure file permission is 'Anyone with the link'\n2. Try re-uploading the file with a new name\n3. Check your internet connection")
             return None
 
 
@@ -243,7 +249,7 @@ def load_csv_data(data_path):
         with open(os.path.join(data_path, 'intention_labels.json'), 'r') as f:
             intention_labels = json.load(f)
         
-        # Limit data for demo (500 users, 5000 articles for better performance)
+        # Limit data for better performance (500 users, 5000 articles)
         unique_users = user_intent['customer_id'].unique()[:500]
         unique_articles = article_df['article_id'].unique()[:5000]
         
@@ -275,17 +281,14 @@ class RecommendationEngine:
         self.data = data
         intent_cols = [f'intention_{i}' for i in range(10)]
         
-        # User intention mapping
         self.user_intent = {}
         for _, row in data['user_intent'].iterrows():
             self.user_intent[str(row['customer_id'])] = row[intent_cols].values.astype(np.float32)
         
-        # Article intention mapping
         self.article_intent = {}
         for _, row in data['article_intent'].iterrows():
             self.article_intent[str(row['article_id'])] = row[intent_cols].values.astype(np.float32)
         
-        # User purchase history
         self.user_purchases = {}
         for _, row in data['interactions'].iterrows():
             uid = str(row['customer_id'])
@@ -294,7 +297,6 @@ class RecommendationEngine:
                 self.user_purchases[uid] = []
             self.user_purchases[uid].append(aid)
         
-        # Article metadata
         self.article_meta = {}
         for _, row in data['articles'].iterrows():
             self.article_meta[str(row['article_id'])] = row.to_dict()
@@ -313,7 +315,6 @@ class RecommendationEngine:
         return idx, intent[idx]
     
     def recommend(self, user_id, top_n=12):
-        """Get personalized recommendations"""
         user_intent = self.get_user_intent(user_id)
         purchased = set(self.user_purchases.get(user_id, []))
         
@@ -328,7 +329,6 @@ class RecommendationEngine:
         return scores[:top_n]
     
     def get_by_intention(self, intent_id, top_n=12):
-        """Get top articles for a specific intention"""
         articles = []
         for aid, intent in self.article_intent.items():
             if np.argmax(intent) == intent_id:
@@ -380,7 +380,6 @@ def render_sidebar(engine):
     
     selected_user = st.sidebar.selectbox("Select Customer ID", users)
     
-    # User profile
     dom_idx, dom_score = engine.get_dominant_intent(selected_user)
     purchases = len(engine.user_purchases.get(selected_user, []))
     
@@ -407,9 +406,6 @@ def render_sidebar(engine):
 
 
 def render_product_card(article_id, article, score=None):
-    """Display a single product card with lazy-loaded image"""
-    
-    # Load image on demand (cached)
     img = load_image_cached(article_id)
     
     if img:
@@ -425,7 +421,6 @@ def render_product_card(article_id, article, score=None):
     if score:
         st.markdown(f"<div class='match-score'>Match: {score:.1%}</div>", unsafe_allow_html=True)
     
-    # Intention badge
     st.button("🔍 View Details", key=f"view_{article_id}", use_container_width=True)
 
 
@@ -455,7 +450,6 @@ def render_explore_tab(engine):
     st.markdown("### 🔍 Shop by Intention")
     st.markdown("Discover products that match your shopping needs")
     
-    # Intention grid
     cols = st.columns(5)
     selected_intent = None
     
@@ -494,7 +488,6 @@ def render_profile_tab(engine, user_id):
     
     user_intent = engine.get_user_intent(user_id)
     
-    # Radar chart
     categories = [engine.get_intent_name(i)[:20] for i in range(10)]
     
     fig = go.Figure(data=go.Scatterpolar(
@@ -518,7 +511,6 @@ def render_profile_tab(engine, user_id):
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Top intentions
     st.markdown("### 🏆 Your Top Style Matches")
     top_indices = np.argsort(user_intent)[::-1][:3]
     
@@ -534,7 +526,6 @@ def render_profile_tab(engine, user_id):
             </div>
             """, unsafe_allow_html=True)
     
-    # Purchase history
     st.markdown("### 📜 Your Purchase History")
     purchases = engine.user_purchases.get(user_id, [])
     st.markdown(f"**Total purchases:** {len(purchases)} items")
@@ -613,31 +604,23 @@ def render_footer():
 def main():
     render_header()
     
-    # Load data
     data = load_data()
     if data is None:
         st.stop()
     
-    # Initialize engine
     engine = RecommendationEngine(data)
-    
-    # Sidebar
     selected_user = render_sidebar(engine)
     
-    # Main tabs
     tab1, tab2, tab3, tab4 = st.tabs([
         "👗 FOR YOU", "🔍 EXPLORE BY INTENTION", "🎯 MY STYLE PROFILE", "👤 MY ACCOUNT"
     ])
     
     with tab1:
         render_for_you_tab(engine, selected_user)
-    
     with tab2:
         render_explore_tab(engine)
-    
     with tab3:
         render_profile_tab(engine, selected_user)
-    
     with tab4:
         render_account_tab(engine, selected_user)
     
