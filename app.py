@@ -1,7 +1,7 @@
 # ============================================================================
 # H&M FASHION RECOMMENDATION SYSTEM
 # ============================================================================
-# Production-ready Streamlit app with fixed Google Drive download
+# Updated with new Google Drive file ID
 # AUC 0.8201 | Three-Tower Neural Network | Intention-Aware AI
 # ============================================================================
 
@@ -28,112 +28,9 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CUSTOM CSS
+# CONSTANTS - UPDATED FILE ID
 # ============================================================================
-st.markdown("""
-<style>
-    .main-header {
-        background: linear-gradient(135deg, #4B86C9 0%, #6EA8D9 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        text-align: center;
-        color: white;
-        margin-bottom: 2rem;
-    }
-    .main-header h1 {
-        margin: 0;
-        font-size: 2rem;
-    }
-    .main-header p {
-        margin: 0.5rem 0 0 0;
-        opacity: 0.9;
-    }
-    .product-card {
-        background: white;
-        border-radius: 12px;
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        border: 1px solid #e0e0e0;
-        transition: transform 0.2s;
-        text-align: center;
-        height: 100%;
-    }
-    .product-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    }
-    .product-title {
-        font-size: 0.8rem;
-        font-weight: 600;
-        margin: 0.5rem 0;
-        height: 40px;
-        overflow: hidden;
-    }
-    .product-type {
-        font-size: 0.7rem;
-        color: #666;
-    }
-    .intention-badge {
-        background-color: #BECDE0;
-        padding: 2px 8px;
-        border-radius: 15px;
-        font-size: 0.65rem;
-        display: inline-block;
-        margin-top: 0.5rem;
-    }
-    .match-score {
-        font-size: 0.7rem;
-        color: #4B86C9;
-        font-weight: bold;
-    }
-    .intention-card {
-        background: linear-gradient(135deg, #BECDE0 0%, #D0DCE8 100%);
-        border-radius: 12px;
-        padding: 1rem;
-        margin: 0.5rem;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    .intention-card:hover {
-        background: linear-gradient(135deg, #4B86C9 0%, #6EA8D9 100%);
-        color: white;
-        transform: scale(1.02);
-    }
-    .intention-icon {
-        font-size: 2rem;
-        margin-bottom: 0.5rem;
-    }
-    .intention-name {
-        font-size: 0.7rem;
-        font-weight: 600;
-    }
-    .stButton > button {
-        background-color: #4B86C9;
-        color: white;
-        border-radius: 25px;
-        border: none;
-        width: 100%;
-        transition: all 0.2s;
-    }
-    .stButton > button:hover {
-        background-color: #3a6ba0;
-        transform: translateY(-1px);
-    }
-    .metric-card {
-        background: white;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-        border: 1px solid #e0e0e0;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================================================
-# CONSTANTS
-# ============================================================================
-GOOGLE_DRIVE_FILE_ID = "1-wRrYq1f5R8XAMoVJHB8S_dt8MbfilcH"
+GOOGLE_DRIVE_FILE_ID = "1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB"
 DATA_DIR = tempfile.gettempdir() + "/hm_app_data"
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 
@@ -143,22 +40,37 @@ INTENTION_ICONS = {
 }
 
 # ============================================================================
-# DOWNLOAD FUNCTION (FIXED)
+# DOWNLOAD FUNCTION (IMPROVED)
 # ============================================================================
 def download_file_from_google_drive(file_id, destination):
-    """Download file from Google Drive using requests (more reliable than gdown)"""
-    
-    URL = "https://drive.google.com/uc?export=download"
+    """Download file from Google Drive using requests"""
     
     session = requests.Session()
-    response = session.get(URL, params={'id': file_id}, stream=True)
     
-    # Check for download warning page (Google's confirmation)
+    # First request to get confirmation token
+    response = session.get(
+        f"https://drive.google.com/uc?id={file_id}&export=download",
+        stream=True
+    )
+    
+    # Check for download warning
+    confirm_token = None
     for key, value in response.cookies.items():
         if key.startswith('download_warning'):
-            params = {'id': file_id, 'confirm': value}
-            response = session.get(URL, params=params, stream=True)
+            confirm_token = value
             break
+    
+    # Second request with confirmation token
+    if confirm_token:
+        response = session.get(
+            f"https://drive.google.com/uc?id={file_id}&confirm={confirm_token}&export=download",
+            stream=True
+        )
+    else:
+        response = session.get(
+            f"https://drive.google.com/uc?export=download&id={file_id}",
+            stream=True
+        )
     
     # Save file
     with open(destination, 'wb') as f:
@@ -193,7 +105,7 @@ def load_image_cached(article_id):
 # ============================================================================
 @st.cache_resource(ttl=3600, show_spinner=False)
 def load_data():
-    """Load data from Google Drive with fixed download method"""
+    """Load data from Google Drive"""
     
     data_path = os.path.join(DATA_DIR, "data")
     
@@ -207,8 +119,12 @@ def load_data():
             os.makedirs(DATA_DIR, exist_ok=True)
             zip_path = os.path.join(DATA_DIR, "data.zip")
             
-            # Download using fixed method
+            # Download using updated method
             download_file_from_google_drive(GOOGLE_DRIVE_FILE_ID, zip_path)
+            
+            # Verify it's a valid zip file
+            if not zipfile.is_zipfile(zip_path):
+                raise Exception("Downloaded file is not a valid zip archive")
             
             # Extract
             with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -220,7 +136,7 @@ def load_data():
             
         except Exception as e:
             st.error(f"❌ Failed to load data: {str(e)}")
-            st.info("💡 Troubleshooting:\n1. Make sure file permission is 'Anyone with the link'\n2. Try re-uploading the file with a new name\n3. Check your internet connection")
+            st.info("💡 Troubleshooting:\n1. Make sure file permission is 'Anyone with the link'\n2. Try downloading manually to check if file is valid\n3. Check your internet connection")
             return None
 
 
