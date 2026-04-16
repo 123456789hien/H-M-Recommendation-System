@@ -74,15 +74,16 @@ def get_data_engine(file_id):
         # Detect base path inside ZIP
         all_files = zf.namelist()
         base_path = ""
-        if "data/article_metadata.csv" not in all_files:
-            for f in all_files:
-                if f.endswith("data/article_metadata.csv"):
-                    base_path = f.replace("data/article_metadata.csv", "")
-                    break
+        # Look for the data directory
+        for f in all_files:
+            if "data/article_metadata.csv" in f:
+                base_path = f.replace("data/article_metadata.csv", "")
+                break
         
-        # Load CSVs directly from ZIP into memory (efficient for small/medium CSVs)
+        # Load CSVs directly from ZIP
         def read_zip_csv(filename):
-            with zf.open(os.path.join(base_path, filename)) as f:
+            full_p = os.path.join(base_path, filename)
+            with zf.open(full_p) as f:
                 return pd.read_csv(f)
 
         article_df = read_zip_csv('data/article_metadata.csv')
@@ -139,14 +140,24 @@ class RecommendationEngine:
         return [aid for aid, _ in scores[:top_n]]
 
     def get_article_image(self, article_id):
-        """Read image directly from ZIP to save disk space"""
         img_name = f"images/{str(article_id).zfill(10)}.jpg"
         full_path = os.path.join(self.base_path, img_name)
         try:
             with self.zf.open(full_path) as f:
-                return Image.open(f).copy() # Copy to memory to allow closing zip handle if needed
+                return Image.open(f).copy()
         except:
             return None
+            
+    def get_intention_info(self, intent_id):
+        """Safely get intention name and description"""
+        # Ensure ID is a string for JSON lookup
+        id_str = str(intent_id)
+        info = self.intention_labels.get(id_str, {})
+        # Fallback values if fields are missing
+        return {
+            "name": info.get("name", f"Intention {id_str}"),
+            "description": info.get("description", "No description available for this fashion intention.")
+        }
 
 # ============================================================================
 # UI COMPONENTS
@@ -177,7 +188,8 @@ def render_style_profile(engine, user_id):
     user_intent = engine.get_user_intention(user_id)
     col1, col2 = st.columns([1, 1])
     with col1:
-        categories = [engine.intention_labels[str(i)]['name'] for i in range(10)]
+        # Get labels safely
+        categories = [engine.get_intention_info(i)['name'] for i in range(10)]
         fig = go.Figure(data=go.Scatterpolar(r=user_intent, theta=categories, fill='toself', marker=dict(color='#000000'), line=dict(color='#000000', width=2)))
         fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, max(user_intent)*1.2])), showlegend=False, height=450, margin=dict(l=80, r=80, t=20, b=20))
         st.plotly_chart(fig, use_container_width=True)
@@ -185,7 +197,7 @@ def render_style_profile(engine, user_id):
         st.markdown("### Top Style Drivers")
         top_idx = np.argsort(user_intent)[::-1][:3]
         for idx in top_idx:
-            info = engine.intention_labels[str(idx)]
+            info = engine.get_intention_info(idx)
             st.markdown(f"""<div style="background: white; padding: 1rem; border-radius: 10px; border-left: 5px solid #000; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                 <h4 style="margin:0;">{info['name']}</h4>
                 <p style="font-size: 0.85rem; color: #666; margin: 0.5rem 0;">{info['description']}</p>
@@ -194,8 +206,12 @@ def render_style_profile(engine, user_id):
 
 def render_explore(engine):
     st.subheader("🔍 Explore by Collection")
-    selected_intent = st.selectbox("Select a Fashion Intention", options=range(10), format_func=lambda x: engine.intention_labels[str(x)]['name'])
-    st.info(f"💡 {engine.intention_labels[str(selected_intent)]['description']}")
+    selected_intent = st.selectbox("Select a Fashion Intention", options=range(10), 
+                                  format_func=lambda x: engine.get_intention_info(x)['name'])
+    
+    info = engine.get_intention_info(selected_intent)
+    st.info(f"💡 {info['description']}")
+    
     art_scores = [(aid, intents[selected_intent]) for aid, intents in engine.article_intent_dict.items()]
     art_scores.sort(key=lambda x: x[1], reverse=True)
     cols = st.columns(4)
@@ -204,7 +220,7 @@ def render_explore(engine):
 
 def main():
     st.markdown("""<div class="main-header"><h1>H&M FASHION RECOMMENDATION</h1><p>Intention-Aware Neural Discovery Engine • Master's Thesis Project</p></div>""", unsafe_allow_html=True)
-    with st.spinner("Initializing AI Engine... (Efficient Mode Enabled)"):
+    with st.spinner("Initializing AI Engine..."):
         engine = get_data_engine(FILE_ID)
         if not engine: return
     with st.sidebar:
@@ -212,7 +228,10 @@ def main():
         st.markdown("---")
         st.subheader("User Selection")
         try:
-            test_users = pd.read_csv(os.path.join(engine.base_path, 'data/sampled_user_ids.csv'))['customer_id'].tolist()
+            # Safely check for sampled_user_ids.csv
+            sampled_path = os.path.join(engine.base_path, 'data/sampled_user_ids.csv')
+            with engine.zf.open(sampled_path) as f:
+                test_users = pd.read_csv(f)['customer_id'].tolist()
         except:
             test_users = list(engine.user_intent_dict.keys())[:100]
         selected_user = st.selectbox("Select Customer ID", test_users)
