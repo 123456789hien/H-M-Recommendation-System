@@ -33,7 +33,7 @@ st.set_page_config(
 # CONSTANTS & CONFIG
 # ============================================================================
 # Google Drive File ID cho file 10% test set
-GOOGLE_DRIVE_FILE_ID = "11joCEzt2tWBcYqTvNGtKO8PizSzxFk9k"
+GOOGLE_DRIVE_FILE_ID = "1A3MjmlkiKIYLnDOXFmGJyMgpbpvryoG2"
 
 # Color scheme - H&M Brand Colors
 COLORS = {
