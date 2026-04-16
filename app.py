@@ -3,7 +3,7 @@
 # ============================================================================
 # LUẬN ÁN THẠC SĨ - HỆ THỐNG GỢI Ý THỜI TRANG DỰA TRÊN Ý ĐỊNH NGƯỜI DÙNG
 # ============================================================================
-# CẬP NHẬT: SỬ DỤNG gdown ĐỂ TẢI FILE TỪ GOOGLE DRIVE
+# CẬP NHẬT: FILE ZIP 600MB - GOOGLE DRIVE ID MỚI
 # ============================================================================
 
 import streamlit as st
@@ -32,7 +32,7 @@ st.set_page_config(
 # ============================================================================
 # CONSTANTS & CONFIG
 # ============================================================================
-# Google Drive File ID cho file 10% test set
+# Google Drive File ID cho file ZIP 600MB
 GOOGLE_DRIVE_FILE_ID = "1A3MjmlkiKIYLnDOXFmGJyMgpbpvryoG2"
 
 # Color scheme - H&M Brand Colors
@@ -338,7 +338,8 @@ def download_and_extract_data():
                 <div style="text-align: center; padding: 2rem;">
                     <div style="font-size: 3rem; margin-bottom: 1rem;">📦</div>
                     <h3 style="color: #E50010; margin-bottom: 0.5rem;">Loading Fashion Data</h3>
-                    <p class="loading-text" style="color: #666;">Downloading from Google Drive...</p>
+                    <p class="loading-text" style="color: #666;">Downloading from Google Drive (600MB)...</p>
+                    <p style="font-size: 12px; color: #888;">First time may take 3-5 minutes</p>
                 </div>
             """, unsafe_allow_html=True)
             progress_bar = st.progress(0)
@@ -353,8 +354,8 @@ def download_and_extract_data():
         
         zip_path = os.path.join(temp_dir, "hm_app_data.zip")
         
-        progress_bar.progress(20)
-        st.text("📥 Downloading data using gdown...")
+        progress_bar.progress(10)
+        st.text("📥 Downloading 600MB file from Google Drive...")
         
         # Sử dụng gdown để tải file
         url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
@@ -387,7 +388,7 @@ def download_and_extract_data():
     except Exception as e:
         progress_container.empty()
         st.error(f"❌ Error: {str(e)}")
-        st.info("💡 Troubleshooting:\n1. Check file permission: 'Anyone with the link'\n2. Make sure gdown is installed\n3. Try re-uploading the file")
+        st.info("💡 Troubleshooting:\n1. Check your internet connection\n2. Try refreshing the page\n3. File may be too large, consider using a smaller dataset")
         raise e
 
 # ============================================================================
