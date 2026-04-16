@@ -1,7 +1,9 @@
 # ============================================================================
 # H&M FASHION RECOMMENDATION SYSTEM - STREAMLIT APP
 # ============================================================================
-# Đọc trực tiếp từ Google Drive folder (không cần tải ZIP)
+# MASTER'S THESIS - INTENTION-AWARE FASHION RECOMMENDATION SYSTEM
+# ============================================================================
+# FIXED: Removed 'fuzzy' parameter from gdown.download()
 # ============================================================================
 
 import streamlit as st
@@ -9,13 +11,12 @@ import pandas as pd
 import numpy as np
 import json
 import os
+import zipfile
 import tempfile
 import time
 from PIL import Image
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
-import requests
-from io import BytesIO
 import gdown
 
 # ============================================================================
@@ -31,11 +32,10 @@ st.set_page_config(
 # ============================================================================
 # CONSTANTS & CONFIG
 # ============================================================================
-# Google Drive folder IDs (đã giải nén sẵn)
-DATA_FOLDER_ID = "1-gPW3AAVJOns0PeaR-qna5z1L7Wh6nlD"
-IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6"
+# Google Drive File ID for the 600MB ZIP file
+GOOGLE_DRIVE_FILE_ID = "1A3MjmlkiKIYLnDOXFmGJyMgpbpvryoG2"
 
-# Color scheme
+# Color scheme - H&M Brand Colors
 COLORS = {
     'primary': '#E50010',
     'secondary': '#000000',
@@ -269,32 +269,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DOWNLOAD FUNCTIONS
-# ============================================================================
-def download_file_from_gdrive(file_id, destination):
-    """Tải file từ Google Drive bằng gdown"""
-    url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, destination, quiet=False)
-
-def list_files_in_gdrive_folder(folder_id):
-    """Lấy danh sách file trong Google Drive folder"""
-    import subprocess
-    import json
-    
-    # Sử dụng gdown để lấy danh sách file
-    temp_dir = tempfile.mkdtemp()
-    list_file = os.path.join(temp_dir, "file_list.txt")
-    
-    cmd = f"gdown --folder https://drive.google.com/drive/folders/{folder_id} --folder"
-    # Cách đơn giản hơn: dùng thư viện requests để gọi API
-    return []
-
-# ============================================================================
-# DATA LOADING FUNCTIONS
+# DATA LOADING FUNCTIONS - USING GDOWN (FIXED)
 # ============================================================================
 @st.cache_resource(show_spinner=False)
-def load_data_from_gdrive():
-    """Tải dữ liệu từ Google Drive folder vào temp directory"""
+def download_and_extract_data():
+    """Download and extract data from Google Drive using gdown (fixed)"""
     
     progress_container = st.empty()
     
@@ -305,144 +284,46 @@ def load_data_from_gdrive():
                 <div style="text-align: center; padding: 2rem;">
                     <div style="font-size: 3rem; margin-bottom: 1rem;">📦</div>
                     <h3 style="color: #E50010; margin-bottom: 0.5rem;">Loading Fashion Data</h3>
-                    <p class="loading-text" style="color: #666;">Downloading from Google Drive...</p>
+                    <p class="loading-text" style="color: #666;">Downloading from Google Drive (600MB)...</p>
+                    <p style="font-size: 12px; color: #888;">First time may take 3-5 minutes</p>
                 </div>
             """, unsafe_allow_html=True)
             progress_bar = st.progress(0)
     
     try:
+        # Create temp directory
         temp_dir = tempfile.mkdtemp()
         data_dir = os.path.join(temp_dir, 'data')
         images_dir = os.path.join(temp_dir, 'images')
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
         
-        progress_bar.progress(20)
-        st.text("📥 Downloading data files...")
-        
-        # Danh sách files cần tải từ DATA_FOLDER
-        data_files = [
-            'article_metadata.csv',
-            'article_intention_profiles.csv',
-            'user_intention_weights.csv',
-            'test_interactions.csv',
-            'sampled_user_ids.csv',
-            'intention_labels.json',
-            'user_confidence_scores.csv',
-            'customers_cleaned.csv',
-            'app_summary.json'
-        ]
-        
-        # Tải từng file data
-        for i, filename in enumerate(data_files):
-            file_id = get_file_id_from_folder(DATA_FOLDER_ID, filename)
-            if file_id:
-                dest_path = os.path.join(data_dir, filename)
-                download_file_from_gdrive(file_id, dest_path)
-                st.text(f"  ✓ {filename}")
-            progress_bar.progress(20 + int(i / len(data_files) * 30))
-        
-        progress_bar.progress(50)
-        st.text("📥 Downloading images (this may take a while)...")
-        
-        # Tải images từ IMAGES_FOLDER
-        # Lưu ý: Cần có danh sách file_id của các ảnh
-        # Cách đơn giản: dùng gdown để tải cả folder
-        import subprocess
-        
-        # Tải toàn bộ folder images
-        os.chdir(images_dir)
-        subprocess.run([
-            "gdown", "https://drive.google.com/drive/folders/" + IMAGES_FOLDER_ID,
-            "--folder", "--quiet"
-        ], capture_output=True)
-        
-        progress_bar.progress(100)
-        time.sleep(0.5)
-        progress_container.empty()
-        
-        return temp_dir
-        
-    except Exception as e:
-        progress_container.empty()
-        st.error(f"❌ Error: {str(e)}")
-        raise e
-
-def get_file_id_from_folder(folder_id, filename):
-    """Lấy file_id của một file trong folder (cần implement)"""
-    # Tạm thời trả về None, cần cài đặt Google Drive API
-    return None
-
-# ============================================================================
-# ALTERNATIVE: SỬ DỤNG URL CỐ ĐỊNH CHO TỪNG FILE
-# ============================================================================
-# Nếu bạn có link trực tiếp cho từng file, dùng cách này đơn giản hơn
-
-# Đường dẫn trực tiếp đến các file (sau khi upload lên Google Drive và lấy link share)
-# Ví dụ: https://drive.google.com/uc?export=download&id=FILE_ID
-
-FILE_URLS = {
-    'article_metadata.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_1',
-    'article_intention_profiles.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_2',
-    'user_intention_weights.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_3',
-    'test_interactions.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_4',
-    'sampled_user_ids.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_5',
-    'intention_labels.json': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_6',
-    'user_confidence_scores.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_7',
-    'customers_cleaned.csv': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_8',
-    'app_summary.json': 'https://drive.google.com/uc?export=download&id=YOUR_FILE_ID_9',
-}
-
-@st.cache_resource(show_spinner=False)
-def load_data_from_urls():
-    """Tải dữ liệu từ các URL trực tiếp"""
-    
-    progress_container = st.empty()
-    
-    with progress_container.container():
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown("""
-                <div style="text-align: center; padding: 2rem;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem;">📦</div>
-                    <h3 style="color: #E50010; margin-bottom: 0.5rem;">Loading Fashion Data</h3>
-                    <p class="loading-text" style="color: #666;">Downloading from Google Drive...</p>
-                </div>
-            """, unsafe_allow_html=True)
-            progress_bar = st.progress(0)
-    
-    try:
-        temp_dir = tempfile.mkdtemp()
-        data_dir = os.path.join(temp_dir, 'data')
-        images_dir = os.path.join(temp_dir, 'images')
-        os.makedirs(data_dir, exist_ok=True)
-        os.makedirs(images_dir, exist_ok=True)
+        zip_path = os.path.join(temp_dir, "hm_app_data.zip")
         
         progress_bar.progress(10)
-        st.text("📥 Downloading data files...")
+        st.text("📥 Downloading 600MB file from Google Drive...")
         
-        # Tải từng file CSV/JSON
-        for i, (filename, url) in enumerate(FILE_URLS.items()):
-            dest_path = os.path.join(data_dir, filename)
-            response = requests.get(url, stream=True)
-            with open(dest_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            st.text(f"  ✓ {filename}")
-            progress_bar.progress(10 + int(i / len(FILE_URLS) * 40))
+        # FIXED: Removed 'fuzzy=True' parameter
+        url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
+        gdown.download(url, zip_path, quiet=False)
+        
+        # Check file
+        if not os.path.exists(zip_path):
+            raise Exception("Download failed: File not found")
+        
+        file_size = os.path.getsize(zip_path)
+        if file_size == 0:
+            raise Exception("Downloaded file is empty")
+        
+        st.text(f"📦 Downloaded: {file_size / 1024 / 1024:.1f} MB")
         
         progress_bar.progress(50)
-        st.text("📥 Downloading images (this may take a while)...")
         
-        # Tải images - cần có danh sách URL ảnh
-        # Hoặc dùng gdown để tải cả folder
-        import subprocess
-        os.chdir(images_dir)
-        subprocess.run([
-            "gdown", f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}",
-            "--folder", "--quiet"
-        ], capture_output=True)
+        # Extract
+        st.text("📂 Extracting files...")
+        
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
         
         progress_bar.progress(100)
         time.sleep(0.5)
@@ -453,8 +334,8 @@ def load_data_from_urls():
     except Exception as e:
         progress_container.empty()
         st.error(f"❌ Error: {str(e)}")
+        st.info("💡 Troubleshooting:\n1. Check your internet connection\n2. Try refreshing the page\n3. File may be too large, consider using a smaller dataset")
         raise e
-
 
 # ============================================================================
 # RECOMMENDATION ENGINE
@@ -1039,27 +920,10 @@ def render_footer():
 def main():
     render_header()
     
-    # Cần có file_id cho từng file
-    # Hiện tại code này cần bạn cung cấp file_id cụ thể
-    st.error("""
-        ⚠️ **Cần cấu hình thêm:**
-        
-        Bạn cần lấy **file_id** của từng file trong Google Drive folder và cập nhật vào `FILE_URLS` dictionary.
-        
-        **Cách lấy file_id:**
-        1. Mở file trên Google Drive
-        2. Copy phần sau `id=` trong URL
-        3. Ví dụ: `https://drive.google.com/file/d/FILE_ID/view`
-        
-        Hoặc dùng cách đơn giản hơn: **Tạo lại file ZIP với kích thước nhỏ hơn (dưới 100MB)**
-    """)
-    return
-    
-    # Nếu đã có FILE_URLS, bỏ comment đoạn code dưới:
-    """
     try:
-        data_dir = load_data_from_urls()
-        engine = RecommendationEngine(data_dir)
+        with st.spinner(""):
+            data_dir = download_and_extract_data()
+            engine = RecommendationEngine(data_dir)
     except Exception as e:
         st.error(f"Failed to initialize: {str(e)}")
         return
@@ -1080,7 +944,6 @@ def main():
         render_account_tab(engine, selected_user)
     
     render_footer()
-    """
 
 if __name__ == "__main__":
     main()
