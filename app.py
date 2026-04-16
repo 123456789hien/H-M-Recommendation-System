@@ -3,7 +3,7 @@
 # ============================================================================
 # LUẬN ÁN THẠC SĨ - HỆ THỐNG GỢI Ý THỜI TRANG DỰA TRÊN Ý ĐỊNH NGƯỜI DÙNG
 # ============================================================================
-# CẬP NHẬT: SỬ DỤNG DỮ LIỆU 10% TEST SET VỚI GOOGLE DRIVE ID MỚI
+# CẬP NHẬT: SỬ DỤNG gdown ĐỂ TẢI FILE TỪ GOOGLE DRIVE
 # ============================================================================
 
 import streamlit as st
@@ -12,20 +12,12 @@ import numpy as np
 import json
 import os
 import zipfile
-import requests
-import re
-from io import BytesIO
+import tempfile
+import time
 from PIL import Image
-import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
-import tempfile
-import shutil
-import warnings
-from datetime import datetime
-import time
-
-warnings.filterwarnings('ignore')
+import gdown
 
 # ============================================================================
 # PAGE CONFIGURATION
@@ -40,23 +32,23 @@ st.set_page_config(
 # ============================================================================
 # CONSTANTS & CONFIG
 # ============================================================================
-# ⚠️ ĐÃ CẬP NHẬT FILE ID MỚI CHO FILE 10% TEST SET
-IMAGES_ZIP_ID = "11joCEzt2tWBcYqTvNGtKO8PizSzxFk9k"  # File ID của hm_app_data_10pct.zip
+# Google Drive File ID cho file 10% test set
+GOOGLE_DRIVE_FILE_ID = "11joCEzt2tWBcYqTvNGtKO8PizSzxFk9k"
 
 # Color scheme - H&M Brand Colors
 COLORS = {
-    'primary': '#E50010',      # H&M Red
-    'secondary': '#000000',     # Black
-    'accent': '#F4F4F4',       # Light Gray
-    'text': '#333333',         # Dark Gray
-    'light': '#FFFFFF',        # White
-    'success': '#00A651',      # Green
-    'warning': '#FF6B35',      # Orange
-    'info': '#4B86C9'          # Blue
+    'primary': '#E50010',
+    'secondary': '#000000',
+    'accent': '#F4F4F4',
+    'text': '#333333',
+    'light': '#FFFFFF',
+    'success': '#00A651',
+    'warning': '#FF6B35',
+    'info': '#4B86C9'
 }
 
 # ============================================================================
-# ADVANCED CUSTOM CSS - PROFESSIONAL E-COMMERCE DESIGN
+# CUSTOM CSS
 # ============================================================================
 st.markdown(f"""
 <style>
@@ -331,11 +323,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING FUNCTIONS - TẢI DỮ LIỆU TỪ GOOGLE DRIVE
+# DATA LOADING FUNCTIONS - SỬ DỤNG GDOWN
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def download_and_extract_data():
-    """Download images.zip từ Google Drive và giải nén"""
+    """Download và extract dữ liệu từ Google Drive sử dụng gdown"""
     
     progress_container = st.empty()
     
@@ -359,49 +351,28 @@ def download_and_extract_data():
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
         
-        # BƯỚC 1: Tải file ZIP
-        progress_bar.progress(10)
-        st.text("📥 Downloading data...")
-        
         zip_path = os.path.join(temp_dir, "hm_app_data.zip")
         
-        # Sử dụng requests để tải file với confirm token
-        session = requests.Session()
-        url = f"https://drive.google.com/uc?export=download&id={IMAGES_ZIP_ID}"
+        progress_bar.progress(20)
+        st.text("📥 Downloading data using gdown...")
         
-        response = session.get(url, stream=True, timeout=60)
+        # Sử dụng gdown để tải file
+        url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
+        gdown.download(url, zip_path, quiet=False, fuzzy=True)
         
-        # Tìm confirm token nếu có
-        confirm_token = None
-        for key, value in response.cookies.items():
-            if 'download_warning' in key:
-                confirm_token = value
-                break
-        
-        if not confirm_token:
-            content_str = response.content.decode('utf-8', errors='ignore')
-            confirm_match = re.search(r'confirm=([a-zA-Z0-9_\-]+)', content_str)
-            if confirm_match:
-                confirm_token = confirm_match.group(1)
-        
-        if confirm_token:
-            download_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={IMAGES_ZIP_ID}"
-        else:
-            download_url = url
-        
-        response = session.get(download_url, stream=True, timeout=300)
-        
-        with open(zip_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
+        # Kiểm tra file
+        if not os.path.exists(zip_path):
+            raise Exception("Download failed: File not found")
         
         file_size = os.path.getsize(zip_path)
+        if file_size == 0:
+            raise Exception("Downloaded file is empty")
+        
         st.text(f"📦 Downloaded: {file_size / 1024 / 1024:.1f} MB")
         
         progress_bar.progress(50)
         
-        # BƯỚC 2: Giải nén
+        # Giải nén
         st.text("📂 Extracting files...")
         
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -416,6 +387,7 @@ def download_and_extract_data():
     except Exception as e:
         progress_container.empty()
         st.error(f"❌ Error: {str(e)}")
+        st.info("💡 Troubleshooting:\n1. Check file permission: 'Anyone with the link'\n2. Make sure gdown is installed\n3. Try re-uploading the file")
         raise e
 
 # ============================================================================
@@ -466,7 +438,7 @@ class RecommendationEngine:
             return {}
     
     def _build_mappings(self):
-        # Build lookup dictionaries for performance
+        # Build lookup dictionaries
         self.user_intent_dict = {
             str(row['customer_id']): row[self.intention_cols].values.astype(np.float32)
             for _, row in self.user_intentions.iterrows()
@@ -505,7 +477,6 @@ class RecommendationEngine:
         user_intent = self.get_user_intention(user_id)
         purchased = set(self.get_user_purchased_articles(user_id)) if exclude_purchased else set()
         
-        # Vectorized similarity computation
         article_ids = []
         intentions = []
         for aid, intent in self.article_intent_dict.items():
@@ -539,13 +510,11 @@ class RecommendationEngine:
     def get_article_image_path(self, article_id):
         img_id = str(article_id).zfill(10)
         
-        # Tìm trong thư mục images (có thể nested)
         for root, dirs, files in os.walk(self.images_dir):
             for file in files:
                 if file.startswith(img_id) or file == f"{img_id}.jpg":
                     return os.path.join(root, file)
         
-        # Thử trực tiếp
         img_path = os.path.join(self.images_dir, f"{img_id}.jpg")
         if os.path.exists(img_path):
             return img_path
@@ -577,7 +546,6 @@ def render_header():
 
 def render_sidebar(engine):
     with st.sidebar:
-        # Logo
         st.markdown("""
             <div style="text-align: center; padding: 1rem 0;">
                 <h2 style="color: #E50010; font-weight: 700; letter-spacing: -1px;">
@@ -590,8 +558,6 @@ def render_sidebar(engine):
         """, unsafe_allow_html=True)
         
         st.markdown("---")
-        
-        # User Selection
         st.markdown("### 👤 Customer Login")
         
         users = engine.get_available_users()
@@ -606,7 +572,6 @@ def render_sidebar(engine):
             help="Choose a customer to view personalized recommendations"
         )
         
-        # User Profile Card
         st.markdown("---")
         st.markdown("### 📊 Profile Overview")
         
@@ -615,7 +580,6 @@ def render_sidebar(engine):
         n_purchases = len(engine.get_user_purchased_articles(selected_user))
         intent_info = engine.get_intention_description(dominant_idx)
         
-        # Confidence badge
         if confidence >= 0.6:
             badge_color = COLORS['success']
             badge_text = "High Confidence"
@@ -669,11 +633,10 @@ def render_sidebar(engine):
             </div>
         """, unsafe_allow_html=True)
         
-        # Navigation hint
         st.markdown("""
             <div style="background: #f8f9fa; border-radius: 10px; padding: 1rem; margin-top: 1rem;">
                 <p style="font-size: 12px; color: #666; margin: 0;">
-                    💡 <b>Tip:</b> Use the tabs above to explore recommendations by intention or view your style profile.
+                    💡 <b>Tip:</b> Use the tabs above to explore recommendations.
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -688,20 +651,17 @@ def render_product_card(engine, article_id, col, show_intention=True):
     img_path = engine.get_article_image_path(article_id)
     
     with col:
-        # Product Card
         st.markdown('<div class="product-card">', unsafe_allow_html=True)
         
-        # Image
         if img_path:
             try:
                 img = Image.open(img_path)
-                st.image(img, width="stretch", output_format="JPEG")
-            except Exception as e:
-                st.image("https://via.placeholder.com/300x400?text=Image+Error", width="stretch")
+                st.image(img, use_container_width=True)
+            except Exception:
+                st.image("https://via.placeholder.com/300x400?text=H&M", use_container_width=True)
         else:
-            st.image("https://via.placeholder.com/300x400?text=No+Image", width="stretch")
+            st.image("https://via.placeholder.com/300x400?text=H&M", use_container_width=True)
         
-        # Product Info
         st.markdown(f"""
             <div class="product-info">
                 <div class="product-name">{details.get('prod_name', 'Unknown Product')}</div>
@@ -720,15 +680,11 @@ def render_product_card(engine, article_id, col, show_intention=True):
         
         st.markdown('</div></div>', unsafe_allow_html=True)
 
-# ============================================================================
-# TAB RENDERERS
-# ============================================================================
 def render_for_you_tab(engine, user_id):
     if not user_id:
         st.warning("👈 Please select a customer from the sidebar")
         return
     
-    # Stats row
     dominant_idx, dominant_score = engine.get_dominant_intention(user_id)
     intent_info = engine.get_intention_description(dominant_idx)
     purchased_count = len(engine.get_user_purchased_articles(user_id))
@@ -754,7 +710,6 @@ def render_for_you_tab(engine, user_id):
     
     st.markdown("---")
     
-    # Recommendations
     st.markdown(f"""
         <h3 style="margin-bottom: 1.5rem;">
             ✨ Curated For You 
@@ -782,9 +737,7 @@ def render_explore_tab(engine):
         </p>
     """, unsafe_allow_html=True)
     
-    # Intention grid
     intention_cols = st.columns(5)
-    selected_intention = st.session_state.get('selected_intention', None)
     
     for i in range(10):
         with intention_cols[i % 5]:
@@ -798,7 +751,6 @@ def render_explore_tab(engine):
                 st.session_state.selected_intention = i
                 st.rerun()
     
-    # Show products for selected intention
     if st.session_state.get('selected_intention') is not None:
         intent_id = st.session_state.selected_intention
         intent_info = engine.get_intention_description(intent_id)
@@ -827,8 +779,6 @@ def render_style_profile_tab(engine, user_id):
         return
     
     user_intent = engine.get_user_intention(user_id)
-    
-    # Profile Header
     dominant_idx, dominant_score = engine.get_dominant_intention(user_id)
     intent_info = engine.get_intention_description(dominant_idx)
     
@@ -846,7 +796,6 @@ def render_style_profile_tab(engine, user_id):
         </div>
     """, unsafe_allow_html=True)
     
-    # Radar Chart
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -854,7 +803,7 @@ def render_style_profile_tab(engine, user_id):
         values = user_intent.tolist()
         
         fig = go.Figure(data=go.Scatterpolar(
-            r=values + [values[0]],  # Close the polygon
+            r=values + [values[0]],
             theta=categories + [categories[0]],
             fill='toself',
             fillcolor='rgba(229, 0, 16, 0.2)',
@@ -864,18 +813,12 @@ def render_style_profile_tab(engine, user_id):
         
         fig.update_layout(
             polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, max(values) * 1.2],
-                    tickfont=dict(size=10)
-                ),
+                radialaxis=dict(visible=True, range=[0, max(values) * 1.2], tickfont=dict(size=10)),
                 angularaxis=dict(tickfont=dict(size=11))
             ),
             showlegend=False,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=80, r=80, t=40, b=40),
-            height=500
+            height=500,
+            margin=dict(l=80, r=80, t=40, b=40)
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -911,17 +854,15 @@ def render_style_profile_tab(engine, user_id):
                 </div>
             """, unsafe_allow_html=True)
     
-    # Purchase History
     st.markdown("---")
     st.markdown("### 📦 Recent Purchase History")
     
     purchased = engine.get_user_purchased_articles(user_id)
     
     if purchased:
-        st.markdown(f"<p style='color: #888;'>You've purchased <b>{len(purchased)}</b> items</p>", 
-                   unsafe_allow_html=True)
+        st.markdown(f"<p style='color: #888;'>You've purchased <b>{len(purchased)}</b> items</p>", unsafe_allow_html=True)
         
-        recent = purchased[-8:][::-1]  # Last 8, reversed
+        recent = purchased[-8:][::-1]
         cols = st.columns(4)
         
         for idx, aid in enumerate(recent):
@@ -930,7 +871,7 @@ def render_style_profile_tab(engine, user_id):
                 with cols[idx % 4]:
                     img_path = engine.get_article_image_path(aid)
                     if img_path:
-                        st.image(img_path, width="stretch")
+                        st.image(img_path, use_container_width=True)
                     st.caption(f"**{details.get('prod_name', 'Unknown')[:30]}**")
     else:
         st.info("No purchase history available for this customer.")
@@ -940,9 +881,7 @@ def render_account_tab(engine, user_id):
         st.warning("👈 Please select a customer from the sidebar")
         return
     
-    st.markdown("""
-        <h2 style="text-align: center; margin-bottom: 2rem;">👤 Account Settings</h2>
-    """, unsafe_allow_html=True)
+    st.markdown('<h2 style="text-align: center; margin-bottom: 2rem;">👤 Account Settings</h2>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
@@ -958,18 +897,15 @@ def render_account_tab(engine, user_id):
         
         st.markdown(f"""
             <div style="margin: 1rem 0;">
-                <div style="display: flex; justify-content: space-between; padding: 0.8rem 0; 
-                            border-bottom: 1px solid #eee;">
+                <div style="display: flex; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #eee;">
                     <span style="color: #888;">Customer ID</span>
                     <span style="font-weight: 600; font-family: monospace;">{user_id}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; padding: 0.8rem 0; 
-                            border-bottom: 1px solid #eee;">
+                <div style="display: flex; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #eee;">
                     <span style="color: #888;">Account Type</span>
                     <span style="font-weight: 600;">Premium Member</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; padding: 0.8rem 0; 
-                            border-bottom: 1px solid #eee;">
+                <div style="display: flex; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #eee;">
                     <span style="color: #888;">Total Purchases</span>
                     <span style="font-weight: 600; color: #E50010;">{purchased} items</span>
                 </div>
@@ -999,10 +935,8 @@ def render_account_tab(engine, user_id):
         
         st.markdown("</div>", unsafe_allow_html=True)
     
-    # About the system
     st.markdown("---")
     
-    # Lấy thông tin model performance từ app_summary
     model_auc = engine.app_summary.get('model_performance', {}).get('three_tower_auc', 0.8201)
     model_improvement = engine.app_summary.get('model_performance', {}).get('improvement', '+3.54%')
     
@@ -1048,10 +982,8 @@ def render_footer():
 # MAIN APPLICATION
 # ============================================================================
 def main():
-    # Header
     render_header()
     
-    # Initialize data
     try:
         with st.spinner(""):
             data_dir = download_and_extract_data()
@@ -1060,30 +992,21 @@ def main():
         st.error(f"Failed to initialize: {str(e)}")
         return
     
-    # Sidebar
     selected_user = render_sidebar(engine)
     
-    # Main Tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "👗 **FOR YOU**",
-        "🔍 **EXPLORE**", 
-        "🎯 **MY STYLE**",
-        "👤 **ACCOUNT**"
+        "👗 **FOR YOU**", "🔍 **EXPLORE**", "🎯 **MY STYLE**", "👤 **ACCOUNT**"
     ])
     
     with tab1:
         render_for_you_tab(engine, selected_user)
-    
     with tab2:
         render_explore_tab(engine)
-    
     with tab3:
         render_style_profile_tab(engine, selected_user)
-    
     with tab4:
         render_account_tab(engine, selected_user)
     
-    # Footer
     render_footer()
 
 if __name__ == "__main__":
