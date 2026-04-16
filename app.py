@@ -1,5 +1,5 @@
 # ============================================================================
-# H&M FASHION RECOMMENDATION SYSTEM - REFINED E-COMMERCE UI
+# H&M FASHION RECOMMENDATION SYSTEM - INTERACTIVE E-COMMERCE UI
 # ============================================================================
 
 import streamlit as st
@@ -19,11 +19,17 @@ import subprocess
 # PAGE CONFIGURATION
 # ============================================================================
 st.set_page_config(
-    page_title="H&M Fashion | Personal Shopping",
+    page_title="H&M Fashion | Interactive Shopping",
     page_icon="👗",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Initialize session state for navigation and interaction
+if 'selected_article' not in st.session_state:
+    st.session_state.selected_article = None
+if 'view_history' not in st.session_state:
+    st.session_state.view_history = []
 
 # ============================================================================
 # CONSTANTS & CONFIGURATION
@@ -43,16 +49,8 @@ FILE_IDS = {
 IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6"
 
 INTENTION_NAMES = {
-    0: "Special Occasion Dressing",
-    1: "Everyday Workwear Comfort",
-    2: "Utilitarian Basics",
-    3: "Infant & Nurturing Care",
-    4: "Functional Versatility",
-    5: "Trendy & Casual Provisioning",
-    6: "Hedonic Accessories",
-    7: "Intimate Self-Care",
-    8: "Premium Quality Investment",
-    9: "Professional Identity Expression"
+    0: "Special Occasion", 1: "Everyday Workwear", 2: "Basics", 3: "Baby Care", 4: "Functional",
+    5: "Trendy Casual", 6: "Accessories", 7: "Intimate Care", 8: "Premium Knitwear", 9: "Professional"
 }
 
 INTENTION_ICONS = {
@@ -60,28 +58,9 @@ INTENTION_ICONS = {
     5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
 }
 
-INTENTION_DESCRIPTIONS = {
-    0: "Dresses and jumpsuits for parties, events, and celebrations. Trend-led, fashion-forward pieces.",
-    1: "Shirts and blouses for daily professional wear. Comfortable, practical, and style-conscious.",
-    2: "Socks, tights, and basic items. Functional replenishment with minimal deliberation.",
-    3: "Baby jumpsuits and infant wear. Caregiving purchases driven by nurturing affect.",
-    4: "Trousers and jeans selected for practical attributes like pockets and durability.",
-    5: "Hoodies and sweaters for children. Balancing child preferences with cost.",
-    6: "Scarves, bags, shoes, and accessories. Novelty-seeking and hedonic stimulation.",
-    7: "Bras and underwear bottoms. Personal well-being and bodily comfort.",
-    8: "Sweaters and knitwear. Investment in premium quality and aesthetic experience.",
-    9: "Shirts for men's professional wear. Workplace role-normative purchases."
-}
-
 COLORS = {
-    'primary': '#E50010',
-    'secondary': '#000000',
-    'bg_light': '#F9F9F9',
-    'text_main': '#222222',
-    'text_muted': '#666666',
-    'border': '#EEEEEE',
-    'white': '#FFFFFF',
-    'success': '#198754'
+    'primary': '#E50010', 'secondary': '#000000', 'bg_light': '#F9F9F9',
+    'text_main': '#222222', 'text_muted': '#666666', 'border': '#EEEEEE', 'white': '#FFFFFF'
 }
 
 # ============================================================================
@@ -91,243 +70,92 @@ st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
     
-    html, body, [class*="css"] {{
-        font-family: 'Montserrat', sans-serif;
-        color: {COLORS['text_main']};
-    }}
+    html, body, [class*="css"] {{ font-family: 'Montserrat', sans-serif; color: {COLORS['text_main']}; }}
+    .main .block-container {{ padding-top: 1rem; max-width: 1200px; }}
 
-    .main .block-container {{
-        padding-top: 1rem;
-        max-width: 1200px;
-    }}
-
-    /* Header Styling */
-    .header-container {{
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding: 1.5rem 0;
-        margin-bottom: 2rem;
-        border-bottom: 2px solid {COLORS['secondary']};
-    }}
-    .brand-logo {{
-        font-size: 3rem;
-        font-weight: 800;
-        color: {COLORS['primary']};
-        letter-spacing: -2px;
-    }}
-
-    /* Product Grid */
-    .product-grid {{
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-        gap: 30px;
-    }}
+    /* Header */
+    .header-container {{ display: flex; justify-content: center; align-items: center; padding: 1.5rem 0; margin-bottom: 1rem; border-bottom: 2px solid {COLORS['secondary']}; }}
+    .brand-logo {{ font-size: 2.5rem; font-weight: 800; color: {COLORS['primary']}; letter-spacing: -2px; cursor: pointer; }}
 
     /* Product Card */
-    .product-card {{
-        background: {COLORS['white']};
-        transition: transform 0.3s ease;
-        position: relative;
-        margin-bottom: 20px;
-    }}
-    .product-card:hover {{
-        transform: translateY(-5px);
-    }}
-    .image-container {{
-        width: 100%;
-        aspect-ratio: 2/3;
-        overflow: hidden;
-        background: #f0f0f0;
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }}
-    .similarity-badge {{
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: rgba(229, 0, 16, 0.9);
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 10px;
-        font-weight: 700;
-        color: white;
-        z-index: 10;
-    }}
-    .product-details {{
-        padding: 12px 0;
-    }}
-    .product-title {{
-        font-size: 0.9rem;
-        font-weight: 600;
-        margin-bottom: 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }}
-    .product-meta {{
-        font-size: 0.75rem;
-        color: {COLORS['text_muted']};
-        margin-bottom: 8px;
-        text-transform: capitalize;
-    }}
-    .product-price {{
-        font-size: 1rem;
-        font-weight: 700;
-        color: {COLORS['secondary']};
-    }}
-    .product-tag {{
-        display: inline-block;
-        font-size: 10px;
-        padding: 2px 6px;
-        background: {COLORS['bg_light']};
-        border: 1px solid {COLORS['border']};
-        margin-right: 4px;
-        margin-top: 4px;
-        border-radius: 2px;
-    }}
-
-    /* Section Headers */
-    .section-title {{
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin: 2rem 0 1rem 0;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        border-left: 5px solid {COLORS['primary']};
-        padding-left: 15px;
-    }}
-
-    /* Sidebar Customization */
-    [data-testid="stSidebar"] {{
-        background-color: {COLORS['white']};
-        border-right: 1px solid {COLORS['border']};
-    }}
+    .product-card {{ background: {COLORS['white']}; transition: transform 0.3s ease; position: relative; margin-bottom: 20px; cursor: pointer; border: 1px solid transparent; }}
+    .product-card:hover {{ transform: translateY(-5px); border-color: {COLORS['border']}; }}
     
-    /* Stats Card */
-    .stat-box {{
-        padding: 1.5rem;
-        background: {COLORS['bg_light']};
-        border: 1px solid {COLORS['border']};
-        text-align: center;
-    }}
-    .stat-val {{
-        font-size: 1.8rem;
-        font-weight: 800;
-        color: {COLORS['primary']};
-    }}
-    .stat-label {{
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        color: {COLORS['text_muted']};
-        margin-top: 5px;
-    }}
+    .image-container {{ width: 100%; aspect-ratio: 2/3; overflow: hidden; background: #f0f0f0; position: relative; display: flex; align-items: center; justify-content: center; }}
+    .similarity-badge {{ position: absolute; top: 10px; right: 10px; background: rgba(229, 0, 16, 0.9); padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; color: white; z-index: 10; }}
+    
+    .product-details {{ padding: 10px 0; }}
+    .product-title {{ font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    .product-price {{ font-size: 0.95rem; font-weight: 700; color: {COLORS['secondary']}; }}
+    
+    /* Section Title */
+    .section-title {{ font-size: 1.2rem; font-weight: 700; margin: 1.5rem 0 1rem 0; text-transform: uppercase; letter-spacing: 1px; border-left: 4px solid {COLORS['primary']}; padding-left: 12px; }}
+
+    /* Detail View */
+    .detail-container {{ display: flex; gap: 40px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 40px; }}
+    .detail-image {{ flex: 1; max-width: 450px; }}
+    .detail-info {{ flex: 1.2; }}
+    .detail-title {{ font-size: 2rem; font-weight: 700; margin-bottom: 10px; }}
+    .detail-price {{ font-size: 1.5rem; font-weight: 700; color: {COLORS['primary']}; margin-bottom: 20px; }}
+    .detail-desc {{ font-size: 1rem; line-height: 1.6; color: {COLORS['text_muted']}; margin-bottom: 20px; }}
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING FUNCTIONS
+# DATA LOADING & ENGINE
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def load_data_from_drive():
-    progress_container = st.empty()
-    with progress_container.container():
-        st.markdown(f"""
-            <div style="text-align: center; padding: 3rem;">
-                <h2 style="color: {COLORS['primary']};">H&M</h2>
-                <p>Initializing Boutique Experience...</p>
-            </div>
-        """, unsafe_allow_html=True)
-        progress_bar = st.progress(0)
-    
-    try:
-        temp_dir = tempfile.mkdtemp()
-        data_dir = os.path.join(temp_dir, 'data')
-        images_dir = os.path.join(temp_dir, 'images')
-        os.makedirs(data_dir, exist_ok=True)
-        os.makedirs(images_dir, exist_ok=True)
-        
-        for i, (filename, file_id) in enumerate(FILE_IDS.items()):
-            dest_path = os.path.join(data_dir, filename)
-            url = f"https://drive.google.com/uc?id={file_id}"
-            gdown.download(url, dest_path, quiet=True)
-            progress_bar.progress(10 + int(i / len(FILE_IDS) * 40))
-        
-        # Extract images from folder
-        os.chdir(images_dir)
-        folder_url = f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}"
-        subprocess.run(["gdown", folder_url, "--folder", "--quiet"], capture_output=True)
-        
-        progress_bar.progress(100)
-        time.sleep(0.5)
-        progress_container.empty()
-        return temp_dir
-    except Exception as e:
-        progress_container.empty()
-        st.error(f"Initialization failed: {str(e)}")
-        raise e
+    temp_dir = tempfile.mkdtemp()
+    data_dir = os.path.join(temp_dir, 'data')
+    images_dir = os.path.join(temp_dir, 'images')
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(images_dir, exist_ok=True)
+    for filename, file_id in FILE_IDS.items():
+        gdown.download(f"https://drive.google.com/uc?id={file_id}", os.path.join(data_dir, filename), quiet=True)
+    os.chdir(images_dir)
+    subprocess.run(["gdown", f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}", "--folder", "--quiet"], capture_output=True)
+    return temp_dir
 
-# ============================================================================
-# RECOMMENDATION ENGINE
-# ============================================================================
 class RecommendationEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.images_dir = os.path.join(data_dir, 'images')
-        
         self.article_df = pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
         self.article_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
         self.user_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
         self.test_interactions = pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
-        
-        try:
-            with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
-                self.app_summary = json.load(f)
-        except: self.app_summary = {}
-            
         self.intention_cols = [f'intention_{i}' for i in range(10)]
         self._build_mappings()
     
     def _build_mappings(self):
-        self.user_intent_dict = {
-            str(row['customer_id']): row[self.intention_cols].values.astype(np.float32)
-            for _, row in self.user_intentions.iterrows()
-        }
-        self.article_intent_dict = {
-            str(row['article_id']): row[self.intention_cols].values.astype(np.float32)
-            for _, row in self.article_intentions.iterrows()
-        }
+        self.user_intent_dict = {str(row['customer_id']): row[self.intention_cols].values.astype(np.float32) for _, row in self.user_intentions.iterrows()}
+        self.article_intent_dict = {str(row['article_id']): row[self.intention_cols].values.astype(np.float32) for _, row in self.article_intentions.iterrows()}
         self.user_history = {}
         for _, row in self.test_interactions.iterrows():
             uid, aid = str(row['customer_id']), str(row['article_id'])
             self.user_history.setdefault(uid, []).append(aid)
-        
-        self.article_meta_dict = {
-            str(row['article_id']): row.to_dict()
-            for _, row in self.article_df.iterrows()
-        }
+        self.article_meta_dict = {str(row['article_id']): row.to_dict() for _, row in self.article_df.iterrows()}
 
     def get_user_intention(self, user_id):
         return self.user_intent_dict.get(user_id, np.ones(10) / 10)
 
-    def get_user_purchased_articles(self, user_id):
-        return self.user_history.get(user_id, [])
-
-    def recommend_by_intention(self, user_id, top_n=24):
+    def recommend_for_user(self, user_id, top_n=12):
         user_intent = self.get_user_intention(user_id)
-        purchased = set(self.get_user_purchased_articles(user_id))
-        
+        return self._get_similar_articles(user_intent, top_n)
+
+    def recommend_similar_items(self, article_id, top_n=12):
+        article_intent = self.article_intent_dict.get(str(article_id))
+        if article_intent is None: return []
+        return self._get_similar_articles(article_intent, top_n, exclude_id=str(article_id))
+
+    def _get_similar_articles(self, target_intent, top_n, exclude_id=None):
         article_ids, intentions = [], []
         for aid, intent in self.article_intent_dict.items():
-            if aid not in purchased:
+            if aid != exclude_id:
                 article_ids.append(aid)
                 intentions.append(intent)
-        
-        if not article_ids: return []
-        
-        similarities = cosine_similarity([user_intent], intentions)[0]
+        similarities = cosine_similarity([target_intent], intentions)[0]
         results = sorted(zip(article_ids, similarities), key=lambda x: x[1], reverse=True)[:top_n]
         return results
 
@@ -335,157 +163,134 @@ class RecommendationEngine:
         return self.article_meta_dict.get(str(article_id))
 
     def get_article_image_path(self, article_id):
-        # H&M article IDs are 10 digits, often starting with 0
         img_id = str(article_id).zfill(10)
-        # Search recursively in images_dir
-        for root, dirs, files in os.walk(self.images_dir):
-            # Check for direct match or filename starting with ID
-            if f"{img_id}.jpg" in files:
-                return os.path.join(root, f"{img_id}.jpg")
-            # Some datasets might have subfolders like '010', '011' based on first 3 digits
-            prefix = img_id[:3]
-            sub_path = os.path.join(root, prefix, f"{img_id}.jpg")
-            if os.path.exists(sub_path):
-                return sub_path
+        for root, _, files in os.walk(self.images_dir):
+            if f"{img_id}.jpg" in files: return os.path.join(root, f"{img_id}.jpg")
         return None
-
-    def get_available_users(self):
-        return sorted(list(self.user_intent_dict.keys()))
 
 # ============================================================================
 # UI COMPONENTS
 # ============================================================================
-def render_header():
-    st.markdown(f"""
-        <div class="header-container">
-            <div class="brand-logo">H&M</div>
-        </div>
-    """, unsafe_allow_html=True)
+def select_product(article_id):
+    st.session_state.selected_article = article_id
+    if article_id not in st.session_state.view_history:
+        st.session_state.view_history.insert(0, article_id)
+    st.rerun()
 
-def render_product_card(engine, article_id, score=None, is_history=False):
+def render_product_card(engine, article_id, score=None):
     details = engine.get_article_details(article_id)
     if not details: return
-    
     img_path = engine.get_article_image_path(article_id)
     price = f"{(int(article_id) % 50) + 9.99:.2f}"
     
-    st.markdown('<div class="product-card">', unsafe_allow_html=True)
+    # We use a button-styled card for interactivity
+    with st.container():
+        st.markdown('<div class="product-card">', unsafe_allow_html=True)
+        st.markdown('<div class="image-container">', unsafe_allow_html=True)
+        if score is not None:
+            st.markdown(f'<div class="similarity-badge">{score:.0%} MATCH</div>', unsafe_allow_html=True)
+        
+        if img_path and os.path.exists(img_path):
+            st.image(Image.open(img_path), use_container_width=True)
+        else:
+            st.markdown(f"<div style='color:#ccc;'>No Image</div>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+            <div class="product-details">
+                <div class="product-title">{details.get('prod_name', 'Fashion Item')}</div>
+                <div class="product-price">${price}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("View Details", key=f"btn_{article_id}", use_container_width=True):
+            select_product(article_id)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+def render_detail_view(engine, article_id):
+    details = engine.get_article_details(article_id)
+    if not details: return
     
-    # Image Section
-    st.markdown('<div class="image-container">', unsafe_allow_html=True)
-    if score is not None:
-        st.markdown(f'<div class="similarity-badge">{score:.0%} MATCH</div>', unsafe_allow_html=True)
-    elif is_history:
-        st.markdown(f'<div class="similarity-badge" style="background:#000;">PURCHASED</div>', unsafe_allow_html=True)
+    if st.button("← Back to Shopping"):
+        st.session_state.selected_article = None
+        st.rerun()
+
+    img_path = engine.get_article_image_path(article_id)
+    price = f"{(int(article_id) % 50) + 9.99:.2f}"
     
-    if img_path and os.path.exists(img_path):
-        st.image(Image.open(img_path), use_container_width=True)
-    else:
-        # Fallback if image not found
-        st.markdown(f"<div style='text-align:center;color:#ccc;'>No Image<br><small>{article_id}</small></div>", unsafe_allow_html=True)
+    st.markdown('<div class="detail-container">', unsafe_allow_html=True)
+    
+    # Left: Image
+    col1, col2 = st.columns([1, 1.2])
+    with col1:
+        if img_path and os.path.exists(img_path):
+            st.image(Image.open(img_path), use_container_width=True)
+        else:
+            st.info("Product image not available.")
+    
+    # Right: Info
+    with col2:
+        st.markdown(f"<div class='detail-title'>{details.get('prod_name')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='detail-price'>${price}</div>", unsafe_allow_html=True)
+        st.markdown(f"**Category:** {details.get('product_type_name')} | {details.get('product_group_name')}")
+        st.markdown(f"**Color:** {details.get('colour_group_name')}")
+        st.markdown(f"<div class='detail-desc'>{details.get('detail_desc')}</div>", unsafe_allow_html=True)
+        
+        if st.button("🛒 ADD TO BAG", use_container_width=True):
+            st.success("Added to your shopping bag!")
+
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Details Section
-    name = details.get('prod_name', 'Fashion Item')
-    cat = details.get('product_type_name', 'Apparel')
-    color = details.get('colour_group_name', 'Mixed')
-    
-    st.markdown(f"""
-        <div class="product-details">
-            <div class="product-title">{name}</div>
-            <div class="product-meta">{color} | {cat}</div>
-            <div class="product-price">${price}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    with st.expander("View Details"):
-        st.write(f"**Description:** {details.get('detail_desc', 'Premium H&M quality.')}")
-        st.write(f"**Group:** {details.get('product_group_name', 'N/A')}")
-        st.write(f"**Article ID:** `{article_id}`")
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Recommendations based on this item (Item-to-Item)
+    st.markdown("<div class='section-title'>Customers also viewed</div>", unsafe_allow_html=True)
+    with st.spinner("Finding similar styles..."):
+        similars = engine.recommend_similar_items(article_id)
+        if similars:
+            cols = st.columns(4)
+            for idx, (aid, score) in enumerate(similars):
+                with cols[idx % 4]:
+                    render_product_card(engine, aid, score=score)
 
-def render_for_you(engine, user_id):
-    st.markdown(f"<div class='section-title'>Recommended For You</div>", unsafe_allow_html=True)
-    
-    with st.spinner("Finding matches..."):
-        recommendations = engine.recommend_by_intention(user_id, top_n=20)
-    
-    if recommendations:
-        cols = st.columns(4)
-        for idx, (aid, score) in enumerate(recommendations):
-            with cols[idx % 4]:
-                render_product_card(engine, aid, score=score)
-    else:
-        st.info("No recommendations found for this user.")
-
-def render_history(engine, user_id):
-    st.markdown(f"<div class='section-title'>Your Purchase History</div>", unsafe_allow_html=True)
-    purchases = engine.get_user_purchased_articles(user_id)
-    
-    if purchases:
-        st.write(f"Showing {len(purchases)} past purchases")
-        cols = st.columns(4)
-        for idx, aid in enumerate(reversed(purchases)): # Show newest first
-            with cols[idx % 4]:
-                render_product_card(engine, aid, is_history=True)
-    else:
-        st.info("No purchase history found.")
-
-def render_dna(engine, user_id):
-    st.markdown("<div class='section-title'>Your Style DNA</div>", unsafe_allow_html=True)
-    user_intent = engine.get_user_intention(user_id)
-    categories = [INTENTION_NAMES[i] for i in range(10)]
-    
-    fig = go.Figure(data=go.Scatterpolar(
-        r=user_intent.tolist(), theta=categories, fill='toself',
-        fillcolor='rgba(229, 0, 16, 0.2)', line=dict(color='#E50010', width=2)
-    ))
-    fig.update_layout(polar=dict(radialaxis=dict(visible=False)), showlegend=False, height=400)
-    st.plotly_chart(fig, use_container_width=True)
-
-# ============================================================================
-# MAIN
-# ============================================================================
 def main():
-    render_header()
-    
+    # Load Engine
     try:
         data_path = load_data_from_drive()
         engine = RecommendationEngine(data_path)
+    except:
+        st.error("Failed to load data.")
+        return
+
+    # Sidebar Login
+    with st.sidebar:
+        st.markdown(f"<h2 style='color:{COLORS['primary']};'>Member Club</h2>", unsafe_allow_html=True)
+        login_mode = st.radio("Login", ["List", "ID"])
+        if login_mode == "List":
+            user_id = st.selectbox("Customer:", options=engine.get_available_users())
+        else:
+            user_id = st.text_input("Customer ID:", value=engine.get_available_users()[0])
         
-        with st.sidebar:
-            st.markdown(f"<h2 style='color:{COLORS['primary']};'>Member Login</h2>", unsafe_allow_html=True)
-            
-            # Login Options
-            login_mode = st.radio("Login Method", ["Select from List", "Enter Customer ID"])
-            
-            if login_mode == "Select from List":
-                users = engine.get_available_users()
-                selected_user = st.selectbox("Choose a Customer:", options=users)
-            else:
-                selected_user = st.text_input("Enter Customer ID:", value=engine.get_available_users()[0])
-            
+        if st.session_state.view_history:
             st.markdown("---")
-            st.markdown("### 📊 Account Stats")
-            history_count = len(engine.get_user_purchased_articles(selected_user))
-            st.metric("Total Purchases", history_count)
-            
-            st.markdown("---")
-            st.caption(f"Model: Three-Tower NN")
-            st.caption(f"AUC: {engine.app_summary.get('model_performance', {}).get('three_tower_auc', 0.8201):.4f}")
-        
-        # Tabs for Content
-        tab1, tab2, tab3 = st.tabs(["✨ FOR YOU", "📜 HISTORY", "🧬 STYLE DNA"])
-        
-        with tab1: render_for_you(engine, selected_user)
-        with tab2: render_history(engine, selected_user)
-        with tab3: render_dna(engine, selected_user)
-        
-        st.markdown(f"<div style='text-align:center;margin-top:50px;color:#888;font-size:0.8rem;'>© 2026 H&M Fashion AI System</div>", unsafe_allow_html=True)
-        
-    except Exception as e:
-        st.error("Application Error. Please refresh.")
-        st.exception(e)
+            st.markdown("### Recently Viewed")
+            for aid in st.session_state.view_history[:5]:
+                d = engine.get_article_details(aid)
+                if st.sidebar.button(f"• {d.get('prod_name')[:20]}...", key=f"hist_{aid}"):
+                    select_product(aid)
+
+    # Main Header
+    st.markdown('<div class="header-container"><div class="brand-logo" onclick="window.location.reload()">H&M</div></div>', unsafe_allow_html=True)
+
+    # Content Logic
+    if st.session_state.selected_article:
+        render_detail_view(engine, st.session_state.selected_article)
+    else:
+        # Home Page: Personalized Recommendations
+        st.markdown(f"<div class='section-title'>Recommended For You</div>", unsafe_allow_html=True)
+        recs = engine.recommend_for_user(user_id, top_n=20)
+        cols = st.columns(4)
+        for idx, (aid, score) in enumerate(recs):
+            with cols[idx % 4]:
+                render_product_card(engine, aid, score=score)
 
 if __name__ == "__main__":
     main()
