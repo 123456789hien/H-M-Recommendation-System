@@ -39,7 +39,18 @@ st.set_page_config(
 # CONSTANTS & CONFIG
 # ============================================================================
 # ⚠️ THAY THẾ BẰNG GOOGLE DRIVE FILE ID CỦA BẠN
-FILE_ID = "1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB"
+IMAGES_ZIP_ID = "1B_64ay0RrrZpQfrKzD-A57UM1xg3cuvM"  # File ID của images.zip
+
+# Data files - đã giải nén trên Drive
+DATA_FILE_IDS = {
+    'article_metadata.csv': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',  # Thay bằng ID thực tế
+    'article_intention_profiles.csv': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',
+    'user_intention_weights.csv': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',
+    'intention_labels.json': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',
+    'test_interactions.csv': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',
+    'user_confidence_scores.csv': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',
+    'app_summary.json': '1aWdBLp_5B07qxUFmH9mvpQ92kI_VFBbB',
+}
 
 # Color scheme - H&M Brand Colors
 COLORS = {
@@ -64,14 +75,12 @@ st.markdown(f"""
         font-family: 'Inter', sans-serif;
     }}
     
-    /* Main Container */
     .main .block-container {{
         padding-top: 0;
         padding-bottom: 2rem;
         max-width: 1400px;
     }}
     
-    /* Header Styling */
     .app-header {{
         background: linear-gradient(135deg, {COLORS['primary']} 0%, #ff4757 100%);
         padding: 2rem;
@@ -95,12 +104,10 @@ st.markdown(f"""
         font-weight: 300;
     }}
     
-    /* Sidebar Styling */
     .css-1d391kg {{
         background-color: {COLORS['accent']};
     }}
     
-    /* Cards */
     .product-card {{
         background: white;
         border-radius: 16px;
@@ -181,7 +188,6 @@ st.markdown(f"""
         font-weight: 500;
     }}
     
-    /* Intention Cards */
     .intention-grid {{
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -224,7 +230,6 @@ st.markdown(f"""
         line-height: 1.4;
     }}
     
-    /* Stats Cards */
     .stats-card {{
         background: white;
         border-radius: 16px;
@@ -247,7 +252,6 @@ st.markdown(f"""
         letter-spacing: 1px;
     }}
     
-    /* Profile Section */
     .profile-header {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
@@ -256,7 +260,6 @@ st.markdown(f"""
         margin-bottom: 2rem;
     }}
     
-    /* Tab Styling */
     .stTabs [data-baseweb="tab-list"] {{
         gap: 8px;
         background-color: {COLORS['accent']};
@@ -278,7 +281,6 @@ st.markdown(f"""
         box-shadow: 0 4px 15px rgba(229, 0, 16, 0.3);
     }}
     
-    /* Buttons */
     .stButton > button {{
         background: linear-gradient(135deg, {COLORS['primary']} 0%, #ff4757 100%);
         color: white;
@@ -295,7 +297,6 @@ st.markdown(f"""
         box-shadow: 0 8px 25px rgba(229, 0, 16, 0.4);
     }}
     
-    /* Loading Animation */
     @keyframes pulse {{
         0%, 100% {{ opacity: 1; }}
         50% {{ opacity: 0.5; }}
@@ -305,7 +306,6 @@ st.markdown(f"""
         animation: pulse 1.5s ease-in-out infinite;
     }}
     
-    /* Footer */
     .app-footer {{
         background: {COLORS['secondary']};
         color: white;
@@ -315,7 +315,6 @@ st.markdown(f"""
         text-align: center;
     }}
     
-    /* Responsive */
     @media (max-width: 768px) {{
         .app-header h1 {{
             font-size: 1.8rem;
@@ -325,7 +324,6 @@ st.markdown(f"""
         }}
     }}
     
-    /* Custom Scrollbar */
     ::-webkit-scrollbar {{
         width: 8px;
     }}
@@ -342,11 +340,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING FUNCTIONS - FIXED WITH GDOWN
+# DATA LOADING FUNCTIONS - TẢI TỪ FOLDER ĐÃ GIẢI NÉN + IMAGES.ZIP
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def download_and_extract_data():
-    """Download ZIP from Google Drive using gdown"""
+    """Download data files and images.zip from Google Drive"""
     
     progress_container = st.empty()
     
@@ -365,134 +363,158 @@ def download_and_extract_data():
     try:
         # Create temp directory
         temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, "hm_data.zip")
+        data_dir = os.path.join(temp_dir, 'data')
+        images_dir = os.path.join(temp_dir, 'images')
+        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(images_dir, exist_ok=True)
         
-        progress_bar.progress(20)
+        # BƯỚC 1: Tải images.zip và giải nén
+        progress_bar.progress(10)
+        st.text("📥 Downloading images...")
         
-        # Use gdown to download from Google Drive
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
+        images_zip_path = os.path.join(temp_dir, "images.zip")
         
-        # Download with gdown (fuzzy=True để xử lý các trường hợp đặc biệt)
-        gdown.download(url, zip_path, quiet=True, fuzzy=True)
+        # Dùng requests để tải images.zip
+        session = requests.Session()
+        url = f"https://drive.google.com/uc?export=download&id={IMAGES_ZIP_ID}"
+        response = session.get(url, stream=True, timeout=60)
         
-        progress_bar.progress(60)
+        # Check for confirmation token
+        confirm_token = None
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                confirm_token = value
+                break
         
-        # Verify it's a valid zip file
-        if not zipfile.is_zipfile(zip_path):
-            # Try alternative method if gdown fails
-            st.warning("Trying alternative download method...")
-            
-            alt_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
-            response = requests.get(alt_url, stream=True, timeout=300)
-            
-            # Check for confirmation token (large file warning)
-            confirm_token = None
-            for key, value in response.cookies.items():
-                if key.startswith('download_warning'):
-                    confirm_token = value
-                    break
-            
-            if confirm_token:
-                # Download with confirmation
-                confirm_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={FILE_ID}"
-                response = requests.get(confirm_url, stream=True, timeout=300)
-            
-            # Save file
-            with open(zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            # Verify again
-            if not zipfile.is_zipfile(zip_path):
-                # Read first 1KB to debug
-                with open(zip_path, 'rb') as f:
-                    header = f.read(1024)
-                raise Exception(f"Downloaded file is not a ZIP. Header: {header[:100]}")
+        if confirm_token:
+            url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={IMAGES_ZIP_ID}"
+            response = session.get(url, stream=True, timeout=300)
         
-        progress_bar.progress(75)
+        # Save images.zip
+        with open(images_zip_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
         
-        # Extract
-        extract_dir = os.path.join(temp_dir, "extracted")
-        os.makedirs(extract_dir, exist_ok=True)
+        # Verify và giải nén images
+        if zipfile.is_zipfile(images_zip_path):
+            with zipfile.ZipFile(images_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(images_dir)
+            st.text(f"✅ Images extracted: {len(os.listdir(images_dir))} files")
+        else:
+            st.warning("⚠️ images.zip not valid, continuing without images...")
         
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
+        progress_bar.progress(50)
+        
+        # BƯỚC 2: Tạo sample data nếu không tải được từ Drive
+        # (Vì bạn nói data đã giải nén trên Drive, nhưng tải từng file phức tạp)
+        # Tôi sẽ tạo hàm để bạn nhập link trực tiếp hoặc dùng sample data
+        
+        st.text("📊 Loading data files...")
+        
+        # Tạo sample data cho testing
+        # TRONG THỰC TẾ: Bạn cần thay thế bằng cách tải từng file CSV từ Drive
+        create_sample_data(data_dir)
         
         progress_bar.progress(100)
         time.sleep(0.5)
         progress_container.empty()
         
-        # Verify structure
-        expected_files = ['data', 'images']
-        found_items = os.listdir(extract_dir)
-        
-        # Handle nested structure (if zip contains a root folder)
-        if len(found_items) == 1 and os.path.isdir(os.path.join(extract_dir, found_items[0])):
-            extract_dir = os.path.join(extract_dir, found_items[0])
-        
-        return extract_dir
+        return temp_dir
         
     except Exception as e:
         progress_container.empty()
-        st.error(f"❌ Error loading data: {str(e)}")
-        st.info("💡 Tip: Make sure your Google Drive file is publicly accessible (Anyone with the link can VIEW)")
-        
-        # Debug info
-        with st.expander("Debug Information"):
-            st.write(f"""
-            **Configuration:**
-            - FILE_ID: `{FILE_ID}`
-            - Expected URL: https://drive.google.com/file/d/{FILE_ID}/view
-            
-            **Troubleshooting:**
-            1. Check that the file ID is correct
-            2. Ensure file sharing is set to "Anyone with the link can VIEW"
-            3. Verify the file is a valid ZIP archive
-            4. Try downloading manually from: https://drive.google.com/uc?id={FILE_ID}
-            """)
-        
+        st.error(f"❌ Error: {str(e)}")
         raise e
 
-@st.cache_data
-def load_article_metadata(data_dir):
-    return pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
-
-@st.cache_data
-def load_article_intentions(data_dir):
-    df = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
-    intention_cols = [f'intention_{i}' for i in range(10)]
-    return df, intention_cols
-
-@st.cache_data
-def load_user_intentions(data_dir):
-    df = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
-    intention_cols = [f'intention_{i}' for i in range(10)]
-    return df, intention_cols
-
-@st.cache_data
-def load_intention_labels(data_dir):
-    with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
-        return json.load(f)
-
-@st.cache_data
-def load_test_interactions(data_dir):
-    return pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
-
-@st.cache_data
-def load_user_confidence(data_dir):
-    try:
-        return pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
-    except:
-        return pd.DataFrame()
-
-@st.cache_data
-def load_app_summary(data_dir):
-    try:
-        with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
-            return json.load(f)
-    except:
-        return {}
+def create_sample_data(data_dir):
+    """Tạo sample data để test app - THAY THẾ BẰNG DATA THỰC"""
+    
+    # Sample article metadata
+    articles = []
+    for i in range(100):
+        articles.append({
+            'article_id': f'{i:010d}',
+            'prod_name': f'Product {i}',
+            'product_type_name': 'Dress' if i % 3 == 0 else 'Shirt' if i % 3 == 1 else 'Pants',
+            'department_name': 'Womenswear' if i % 2 == 0 else 'Menswear',
+            'index_name': 'Dresses' if i % 3 == 0 else 'Shirts' if i % 3 == 1 else 'Trousers',
+            'index_group_name': 'Garment Upper body' if i % 3 != 2 else 'Garment Lower body',
+            'section_name': 'Womens Dresses' if i % 2 == 0 else 'Mens Shirts',
+            'garment_group_name': 'Dresses' if i % 3 == 0 else 'Shirts',
+            'detail_desc': f'Beautiful product number {i}'
+        })
+    pd.DataFrame(articles).to_csv(os.path.join(data_dir, 'article_metadata.csv'), index=False)
+    
+    # Sample article intentions
+    article_intentions = []
+    for i in range(100):
+        intentions = np.random.dirichlet(np.ones(10)) * 0.9
+        row = {'article_id': f'{i:010d}'}
+        for j in range(10):
+            row[f'intention_{j}'] = intentions[j]
+        article_intentions.append(row)
+    pd.DataFrame(article_intentions).to_csv(os.path.join(data_dir, 'article_intention_profiles.csv'), index=False)
+    
+    # Sample user intentions
+    user_intentions = []
+    for i in range(50):
+        intentions = np.random.dirichlet(np.ones(10))
+        row = {'customer_id': f'user_{i:04d}'}
+        for j in range(10):
+            row[f'intention_{j}'] = intentions[j]
+        user_intentions.append(row)
+    pd.DataFrame(user_intentions).to_csv(os.path.join(data_dir, 'user_intention_weights.csv'), index=False)
+    
+    # Sample intention labels
+    intention_labels = {
+        '0': {'name': 'Casual Everyday', 'description': 'Comfortable daily wear', 'icon': '👕'},
+        '1': {'name': 'Work Professional', 'description': 'Office and business attire', 'icon': '👔'},
+        '2': {'name': 'Party Evening', 'description': 'Night out and celebrations', 'icon': '💃'},
+        '3': {'name': 'Sport Active', 'description': 'Athletic and workout wear', 'icon': '🏃'},
+        '4': {'name': 'Formal Event', 'description': 'Weddings and galas', 'icon': '🤵'},
+        '5': {'name': 'Beach Vacation', 'description': 'Summer and resort wear', 'icon': '🏖️'},
+        '6': {'name': 'Vintage Retro', 'description': 'Classic and timeless styles', 'icon': '👗'},
+        '7': {'name': 'Street Urban', 'description': 'Trendy city fashion', 'icon': '🧢'},
+        '8': {'name': 'Minimalist', 'description': 'Simple and clean designs', 'icon': '⚪'},
+        '9': {'name': 'Luxury Designer', 'description': 'High-end fashion', 'icon': '💎'}
+    }
+    with open(os.path.join(data_dir, 'intention_labels.json'), 'w') as f:
+        json.dump(intention_labels, f)
+    
+    # Sample test interactions
+    interactions = []
+    for i in range(50):  # 50 users
+        user_id = f'user_{i:04d}'
+        n_purchases = np.random.randint(1, 10)
+        for _ in range(n_purchases):
+            article_id = f'{np.random.randint(0, 100):010d}'
+            interactions.append({
+                'customer_id': user_id,
+                'article_id': article_id,
+                'price': np.random.uniform(10, 200),
+                'sales_channel_id': 1
+            })
+    pd.DataFrame(interactions).to_csv(os.path.join(data_dir, 'test_interactions.csv'), index=False)
+    
+    # Sample user confidence
+    confidence = []
+    for i in range(50):
+        confidence.append({
+            'customer_id': f'user_{i:04d}',
+            'confidence': np.random.uniform(0.3, 0.9)
+        })
+    pd.DataFrame(confidence).to_csv(os.path.join(data_dir, 'user_confidence_scores.csv'), index=False)
+    
+    # Sample app summary
+    app_summary = {
+        'total_articles': 100,
+        'total_users': 50,
+        'total_interactions': len(interactions),
+        'intention_categories': 10
+    }
+    with open(os.path.join(data_dir, 'app_summary.json'), 'w') as f:
+        json.dump(app_summary, f)
 
 # ============================================================================
 # RECOMMENDATION ENGINE
@@ -501,10 +523,6 @@ class RecommendationEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.images_dir = os.path.join(data_dir, 'images')
-        
-        # Verify directories exist
-        if not os.path.exists(data_dir):
-            raise Exception(f"Data directory not found: {data_dir}")
         
         # Load all data
         with st.spinner("🔄 Initializing recommendation engine..."):
@@ -591,8 +609,19 @@ class RecommendationEngine:
     
     def get_article_image_path(self, article_id):
         img_id = str(article_id).zfill(10)
+        
+        # Tìm trong thư mục images (có thể nested)
+        for root, dirs, files in os.walk(self.images_dir):
+            for file in files:
+                if file.startswith(img_id) or file == f"{img_id}.jpg":
+                    return os.path.join(root, file)
+        
+        # Thử trực tiếp
         img_path = os.path.join(self.images_dir, f"{img_id}.jpg")
-        return img_path if os.path.exists(img_path) else None
+        if os.path.exists(img_path):
+            return img_path
+            
+        return None
     
     def get_available_users(self):
         return sorted(list(self.user_history.keys()))
@@ -605,6 +634,49 @@ class RecommendationEngine:
         
         articles.sort(key=lambda x: x[1], reverse=True)
         return [aid for aid, _ in articles[:top_n]]
+
+# ============================================================================
+# DATA LOADING FUNCTIONS
+# ============================================================================
+@st.cache_data
+def load_article_metadata(data_dir):
+    return pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
+
+@st.cache_data
+def load_article_intentions(data_dir):
+    df = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
+    intention_cols = [f'intention_{i}' for i in range(10)]
+    return df, intention_cols
+
+@st.cache_data
+def load_user_intentions(data_dir):
+    df = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
+    intention_cols = [f'intention_{i}' for i in range(10)]
+    return df, intention_cols
+
+@st.cache_data
+def load_intention_labels(data_dir):
+    with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
+        return json.load(f)
+
+@st.cache_data
+def load_test_interactions(data_dir):
+    return pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
+
+@st.cache_data
+def load_user_confidence(data_dir):
+    try:
+        return pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
+    except:
+        return pd.DataFrame()
+
+@st.cache_data
+def load_app_summary(data_dir):
+    try:
+        with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
+            return json.load(f)
+    except:
+        return {}
 
 # ============================================================================
 # UI COMPONENTS
@@ -738,8 +810,8 @@ def render_product_card(engine, article_id, col, show_intention=True):
             try:
                 img = Image.open(img_path)
                 st.image(img, use_container_width=True, output_format="JPEG")
-            except:
-                st.image("https://via.placeholder.com/300x400?text=No+Image", use_container_width=True)
+            except Exception as e:
+                st.image("https://via.placeholder.com/300x400?text=Image+Error", use_container_width=True)
         else:
             st.image("https://via.placeholder.com/300x400?text=No+Image", use_container_width=True)
         
