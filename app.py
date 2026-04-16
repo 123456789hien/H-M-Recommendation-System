@@ -30,7 +30,6 @@ st.set_page_config(
 # CONSTANTS & ASSETS
 # ============================================================================
 FILE_ID = "1-wRrYq1f5R8XAMoVJHB8S_dt8MbfilcH"
-DOWNLOAD_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # Custom CSS for a professional e-commerce look
 st.markdown("""
@@ -102,45 +101,6 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
-    /* Intention Badge */
-    .intention-badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        background-color: #f0f0f0;
-        color: #555;
-        margin-top: 0.5rem;
-    }
-    
-    /* Metric Cards */
-    .metric-container {
-        display: flex;
-        justify-content: space-around;
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
-        margin-bottom: 2rem;
-    }
-    
-    .metric-card {
-        text-align: center;
-    }
-    
-    .metric-value {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #000;
-    }
-    
-    .metric-label {
-        font-size: 0.8rem;
-        color: #666;
-        text-transform: uppercase;
-    }
-    
     /* Sidebar styling */
     section[data-testid="stSidebar"] {
         background-color: #ffffff;
@@ -175,53 +135,78 @@ st.markdown("""
 # DATA LOADING ENGINE
 # ============================================================================
 @st.cache_resource
-def download_and_extract_data():
-    """Download ZIP from Google Drive and extract to temp directory"""
+def download_and_extract_data(file_id):
+    """Robust download from Google Drive handling large file warnings"""
+    def get_confirm_token(response):
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                return value
+        return None
+
+    def save_response_content(response, destination):
+        CHUNK_SIZE = 32768
+        with open(destination, "wb") as f:
+            for chunk in response.iter_content(CHUNK_SIZE):
+                if chunk: # filter out keep-alive new chunks
+                    f.write(chunk)
+
+    URL = "https://docs.google.com/uc?export=download"
+    
+    temp_dir = tempfile.mkdtemp()
+    destination = os.path.join(temp_dir, "data.zip")
+    
+    session = requests.Session()
+    response = session.get(URL, params={'id': file_id}, stream=True)
+    token = get_confirm_token(response)
+
+    if token:
+        params = {'id': file_id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    save_response_content(response, destination)
+    
+    extract_dir = os.path.join(temp_dir, "extracted")
+    os.makedirs(extract_dir, exist_ok=True)
+    
     try:
-        response = requests.get(DOWNLOAD_URL, stream=True)
-        # Handle Google Drive confirmation page
-        if "download_warning" in response.text:
-            import re
-            confirm_token = re.search(r'confirm=([^&]+)', response.text)
-            if confirm_token:
-                confirm_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}&confirm={confirm_token.group(1)}"
-                response = requests.get(confirm_url, stream=True)
-        
-        temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, "hm_app_data.zip")
-        with open(zip_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        
-        extract_dir = os.path.join(temp_dir, "extracted")
-        os.makedirs(extract_dir, exist_ok=True)
-        with zipfile.ZipFile(zip_path, 'r') as zipf:
-            zipf.extractall(extract_dir)
-        
+        with zipfile.ZipFile(destination, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
         return extract_dir
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
+    except zipfile.BadZipFile:
+        # Fallback for small files or direct downloads
+        st.error("Downloaded file is not a valid ZIP. Please check the Google Drive link permissions.")
         return None
 
 class RecommendationEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
-        self.images_dir = os.path.join(data_dir, 'images')
+        # The zip structure has a top level folder or direct files? 
+        # User said: hm_app_data.zip -> images/, data/
+        # We need to find where these folders are
+        self.base_path = data_dir
+        if 'images' not in os.listdir(self.base_path):
+            # Check if it's inside a subfolder (sometimes zips extract into a folder with the same name)
+            for item in os.listdir(self.base_path):
+                if os.path.isdir(os.path.join(self.base_path, item)) and 'images' in os.listdir(os.path.join(self.base_path, item)):
+                    self.base_path = os.path.join(self.base_path, item)
+                    break
+        
+        self.images_dir = os.path.join(self.base_path, 'images')
+        self.data_path = os.path.join(self.base_path, 'data')
         
         # Load all CSV/JSON data
-        self.article_df = pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
-        self.article_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
-        self.user_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
-        self.test_interactions = pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
+        self.article_df = pd.read_csv(os.path.join(self.data_path, 'article_metadata.csv'))
+        self.article_intentions = pd.read_csv(os.path.join(self.data_path, 'article_intention_profiles.csv'))
+        self.user_intentions = pd.read_csv(os.path.join(self.data_path, 'user_intention_weights.csv'))
+        self.test_interactions = pd.read_csv(os.path.join(self.data_path, 'test_interactions.csv'))
         
-        with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
+        with open(os.path.join(self.data_path, 'intention_labels.json'), 'r') as f:
             self.intention_labels = json.load(f)
             
         self.intention_cols = [f'intention_{i}' for i in range(10)]
         self._build_mappings()
     
     def _build_mappings(self):
-        # Mappings for fast lookup
         self.user_intent_dict = {str(row['customer_id']): row[self.intention_cols].values.astype(np.float32) 
                                 for _, row in self.user_intentions.iterrows()}
         
@@ -280,8 +265,7 @@ def product_card(engine, article_id):
         else:
             st.image("https://via.placeholder.com/200x300?text=No+Image", use_container_width=True)
         
-        if st.button("View Details", key=f"btn_{article_id}", use_container_width=True):
-            st.session_state.selected_item = article_id
+        st.button("View Details", key=f"btn_{article_id}", use_container_width=True)
 
 def render_for_you(engine, user_id):
     st.subheader("✨ Recommended for You")
@@ -300,7 +284,6 @@ def render_style_profile(engine, user_id):
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        # Radar Chart
         categories = [engine.intention_labels[str(i)]['name'] for i in range(10)]
         fig = go.Figure(data=go.Scatterpolar(
             r=user_intent,
@@ -338,7 +321,6 @@ def render_explore(engine):
     
     st.info(f"💡 {engine.intention_labels[str(selected_intent)]['description']}")
     
-    # Find items with high score in this intention
     art_scores = []
     for aid, intents in engine.article_intent_dict.items():
         art_scores.append((aid, intents[selected_intent]))
@@ -355,7 +337,6 @@ def render_explore(engine):
 # MAIN APP
 # ============================================================================
 def main():
-    # Header
     st.markdown("""
     <div class="main-header">
         <h1>H&M FASHION RECOMMENDATION</h1>
@@ -363,18 +344,30 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Initialize Engine
-    with st.spinner("Initializing AI Engine..."):
-        data_dir = download_and_extract_data()
-        if not data_dir: return
-        engine = RecommendationEngine(data_dir)
+    with st.spinner("Initializing AI Engine & Downloading Data..."):
+        data_dir = download_and_extract_data(FILE_ID)
+        if not data_dir: 
+            st.error("Failed to load data. Please ensure the Google Drive link is public.")
+            return
+        try:
+            engine = RecommendationEngine(data_dir)
+        except Exception as e:
+            st.error(f"Error processing data files: {e}")
+            st.info("Ensure the ZIP file contains 'data/' and 'images/' folders.")
+            return
 
-    # Sidebar
     with st.sidebar:
         st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/H%26M-Logo.svg/1200px-H%26M-Logo.svg.png", width=100)
         st.markdown("---")
         st.subheader("User Selection")
-        test_users = pd.read_csv(os.path.join(data_dir, 'data', 'sampled_user_ids.csv'))['customer_id'].tolist()
+        
+        # Load sampled users for selection
+        try:
+            sampled_users_df = pd.read_csv(os.path.join(engine.data_path, 'sampled_user_ids.csv'))
+            test_users = sampled_users_df['customer_id'].tolist()
+        except:
+            test_users = list(engine.user_intent_dict.keys())[:100]
+            
         selected_user = st.selectbox("Select Customer ID", test_users)
         
         st.markdown("---")
@@ -385,19 +378,15 @@ def main():
         st.markdown("---")
         st.caption("© 2026 H&M Recommendation Thesis")
 
-    # Tabs
     tab1, tab2, tab3 = st.tabs(["🛍️ FOR YOU", "🔍 EXPLORE", "🎯 STYLE PROFILE"])
     
     with tab1:
         render_for_you(engine, selected_user)
-        
     with tab2:
         render_explore(engine)
-        
     with tab3:
         render_style_profile(engine, selected_user)
 
-    # Footer
     st.markdown("---")
     st.markdown("<div style='text-align: center; color: #888; font-size: 0.8rem;'>Built with Streamlit • Data Source: H&M Personalized Fashion Recommendations Kaggle</div>", unsafe_allow_html=True)
 
