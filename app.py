@@ -28,7 +28,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# GOOGLE DRIVE FILE IDs - UPDATED WITH YOUR ACTUAL IDs
+# GOOGLE DRIVE FILE IDs
 # ============================================================================
 FILE_IDS = {
     'article_metadata.csv': '1RjZmAdpGvQCQHeKpEL30dlTyRenWU1GY',
@@ -43,6 +43,40 @@ FILE_IDS = {
 }
 
 IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6"
+
+# ============================================================================
+# 10 INTENTIONS - STANDARD NAMES (used as fallback)
+# ============================================================================
+INTENTION_NAMES = {
+    0: "Ladieswear Full Body: Special Occasion Dressing",
+    1: "Ladieswear Upper Body: Everyday Workwear Comfort",
+    2: "Unisex Dark Basics: Utilitarian Necessity Purchase",
+    3: "Baby Full Body: Infant & Nurturing Care",
+    4: "Unisex Lower Body: Functional Versatility Seeking",
+    5: "Children's Upper Body: Trendy & Casual Provisioning",
+    6: "Ladies Accessories & Footwear: Hedonic Purchase",
+    7: "Ladieswear Underwear: Intimate Self-Care",
+    8: "Ladieswear Knitwear: Premium Quality Investment",
+    9: "Menswear Shirts: Professional Identity Expression"
+}
+
+INTENTION_ICONS = {
+    0: "👗", 1: "👕", 2: "🧦", 3: "👶", 4: "👖",
+    5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
+}
+
+INTENTION_DESCRIPTIONS = {
+    0: "Dresses and jumpsuits for parties, events, and celebrations. Trend-led, fashion-forward pieces for special moments.",
+    1: "Shirts and blouses for daily professional wear. Comfortable, practical, and style-conscious pieces.",
+    2: "Socks, tights, and basic dark-coloured items. Functional replenishment with minimal aesthetic deliberation.",
+    3: "Baby jumpsuits and infant wear. Caregiving purchases driven by nurturing affect rather than personal preference.",
+    4: "Trousers and jeans selected for practical attributes like pockets, stretch, and durability.",
+    5: "Hoodies and sweaters for children. Parental school-season purchasing balancing child preferences with cost.",
+    6: "Scarves, bags, shoes, and accessories. Novelty-seeking and hedonic stimulation purchases.",
+    7: "Bras and underwear bottoms. Personal well-being and bodily comfort as intrinsic motivation.",
+    8: "Sweaters and knitwear. Investment in premium quality and aesthetic experience as self-reward.",
+    9: "Shirts for men's professional wear. Workplace role-normative purchases signalling professional competence."
+}
 
 # ============================================================================
 # COLOR SCHEME
@@ -250,7 +284,7 @@ def load_data_from_drive():
         
         os.chdir(images_dir)
         folder_url = f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}"
-        result = subprocess.run(["gdown", folder_url, "--folder", "--quiet"], capture_output=True)
+        subprocess.run(["gdown", folder_url, "--folder", "--quiet"], capture_output=True)
         
         # Count downloaded images
         image_count = 0
@@ -298,8 +332,33 @@ class RecommendationEngine:
         return df, intention_cols
     
     def load_intention_labels(self, data_dir):
-        with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
-            return json.load(f)
+        """Load intention labels and merge with standard names/icons"""
+        try:
+            with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
+                labels = json.load(f)
+        except:
+            labels = {}
+        
+        # Create final labels with standard names and icons
+        result = {}
+        for i in range(10):
+            key = str(i)
+            if key in labels:
+                # Use existing data but override name and add icon
+                result[key] = labels[key].copy()
+                result[key]['name'] = INTENTION_NAMES[i]
+                result[key]['icon'] = INTENTION_ICONS[i]
+                if 'description' not in result[key]:
+                    result[key]['description'] = INTENTION_DESCRIPTIONS[i]
+            else:
+                # Create new entry
+                result[key] = {
+                    "name": INTENTION_NAMES[i],
+                    "icon": INTENTION_ICONS[i],
+                    "description": INTENTION_DESCRIPTIONS[i]
+                }
+        
+        return result
     
     def load_user_confidence(self, data_dir):
         try:
@@ -371,11 +430,12 @@ class RecommendationEngine:
         return self.article_meta_dict.get(str(article_id))
     
     def get_intention_description(self, intention_id):
-        return self.intention_labels.get(str(intention_id), {
-            "name": f"Intention {intention_id}",
-            "description": "Shopping preference category",
-            "icon": "🎯"
-        })
+        intent = self.intention_labels.get(str(intention_id), {})
+        return {
+            "name": intent.get('name', INTENTION_NAMES.get(intention_id, f'Intention {intention_id}')),
+            "description": intent.get('description', INTENTION_DESCRIPTIONS.get(intention_id, 'Shopping preference category')),
+            "icon": intent.get('icon', INTENTION_ICONS.get(intention_id, "🎯"))
+        }
     
     def get_dominant_intention(self, user_id):
         user_intent = self.get_user_intention(user_id)
