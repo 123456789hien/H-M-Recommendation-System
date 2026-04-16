@@ -11,6 +11,7 @@ import json
 import os
 import zipfile
 import requests
+import re
 from io import BytesIO
 from PIL import Image
 import plotly.express as px
@@ -328,7 +329,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# DATA LOADING FUNCTIONS - TẢI IMAGES.ZIP VÀ TẠO SAMPLE DATA
+# DATA LOADING FUNCTIONS - ĐÃ FIX LỖI TẢI IMAGES
 # ============================================================================
 @st.cache_resource(show_spinner=False)
 def download_and_extract_data():
@@ -356,38 +357,50 @@ def download_and_extract_data():
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
         
-        # BƯỚC 1: Tải images.zip với phương pháp mới
+        # BƯỚC 1: Tải images.zip - ĐÃ FIX
         progress_bar.progress(10)
         st.text("📥 Downloading images...")
         
         images_zip_path = os.path.join(temp_dir, "images.zip")
         
-        # Phương pháp 1: Thử tải trực tiếp với confirm token
         try:
             session = requests.Session()
-            url = f"https://drive.google.com/uc?export=download&id={IMAGES_ZIP_ID}"
-            response = session.get(url, stream=True, timeout=60, allow_redirects=True)
             
-            # Kiểm tra nếu là trang xác nhận (large file)
-            content = response.content
-            if b'confirm' in content[:1000] or b'download_warning' in str(response.cookies).lower():
-                # Lấy confirm token từ cookies hoặc content
-                confirm_token = None
-                for key, value in response.cookies.items():
-                    if 'download_warning' in key:
-                        confirm_token = value
-                        break
-                
-                # Thử lấy từ content nếu không có trong cookies
-                if not confirm_token:
-                    import re
-                    confirm_match = re.search(r'confirm=([a-zA-Z0-9_\-]+)', content.decode('utf-8', errors='ignore'))
-                    if confirm_match:
-                        confirm_token = confirm_match.group(1)
-                
-                if confirm_token:
-                    confirm_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={IMAGES_ZIP_ID}"
-                    response = session.get(confirm_url, stream=True, timeout=300)
+            # URL để lấy confirm token
+            url = f"https://drive.google.com/uc?export=download&id={IMAGES_ZIP_ID}"
+            
+            # Lần 1: Lấy cookies và confirm token
+            response = session.get(url, stream=True, timeout=60)
+            content_str = response.content.decode('utf-8', errors='ignore')
+            
+            # Tìm confirm token trong cookies
+            confirm_token = None
+            for key, value in response.cookies.items():
+                if 'download_warning' in key:
+                    confirm_token = value
+                    break
+            
+            # Nếu không có trong cookies, tìm trong HTML
+            if not confirm_token:
+                confirm_match = re.search(r'confirm=([a-zA-Z0-9_\-]+)', content_str)
+                if confirm_match:
+                    confirm_token = confirm_match.group(1)
+            
+            # Lần 2: Tải file thực với confirm token
+            if confirm_token:
+                download_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={IMAGES_ZIP_ID}"
+            else:
+                download_url = url
+            
+            response = session.get(download_url, stream=True, timeout=300)
+            
+            # Kiểm tra nếu response là HTML (vẫn chưa tải được)
+            content_type = response.headers.get('content-type', '')
+            if 'text/html' in content_type:
+                st.text("⚠️ Got HTML, trying alternative...")
+                # Thử với confirm=t
+                alt_url = f"https://drive.google.com/uc?export=download&confirm=t&id={IMAGES_ZIP_ID}"
+                response = session.get(alt_url, stream=True, timeout=300)
             
             # Lưu file
             with open(images_zip_path, "wb") as f:
@@ -400,7 +413,7 @@ def download_and_extract_data():
             st.text(f"📦 Downloaded: {file_size / 1024 / 1024:.1f} MB")
             
         except Exception as e:
-            st.text(f"⚠️ Download error: {e}")
+            st.text(f"⚠️ Download error: {str(e)}")
         
         progress_bar.progress(50)
         
@@ -419,7 +432,7 @@ def download_and_extract_data():
             except Exception as e:
                 st.text(f"⚠️ Extract error: {e}")
         else:
-            st.text("⚠️ No valid images.zip found, using placeholder images")
+            st.text("⚠️ No valid images.zip, using placeholders")
         
         progress_bar.progress(60)
         
@@ -441,7 +454,7 @@ def download_and_extract_data():
 def create_sample_data(data_dir):
     """Tạo sample data để test app"""
     
-    np.random.seed(42)  # For reproducible results
+    np.random.seed(42)
     
     # Sample article metadata
     articles = []
@@ -466,13 +479,12 @@ def create_sample_data(data_dir):
         })
     pd.DataFrame(articles).to_csv(os.path.join(data_dir, 'article_metadata.csv'), index=False)
     
-    # Sample article intentions - phân phối ý định rõ ràng hơn
+    # Sample article intentions
     article_intentions = []
     for i in range(100):
-        # Tạo intentions với dominant intention rõ ràng
         dominant = i % 10
-        intentions = np.random.dirichlet(np.ones(10) * 0.3) * 0.3  # 30% ngẫu nhiên
-        intentions[dominant] += 0.7  # 70% cho dominant intention
+        intentions = np.random.dirichlet(np.ones(10) * 0.3) * 0.3
+        intentions[dominant] += 0.7
         
         row = {'article_id': f'{i:010d}'}
         for j in range(10):
@@ -483,15 +495,14 @@ def create_sample_data(data_dir):
     # Sample user intentions
     user_intentions = []
     for i in range(50):
-        # Mỗi user có preference khác nhau
-        preferences = np.random.dirichlet(np.ones(10) * 2)  # Concentrated distribution
+        preferences = np.random.dirichlet(np.ones(10) * 2)
         row = {'customer_id': f'user_{i:04d}'}
         for j in range(10):
             row[f'intention_{j}'] = preferences[j]
         user_intentions.append(row)
     pd.DataFrame(user_intentions).to_csv(os.path.join(data_dir, 'user_intention_weights.csv'), index=False)
     
-    # Sample intention labels với icon đẹp
+    # Sample intention labels
     intention_labels = {
         '0': {'name': 'Casual Everyday', 'description': 'Comfortable daily wear for relaxed moments', 'icon': '👕'},
         '1': {'name': 'Work Professional', 'description': 'Office and business attire for success', 'icon': '👔'},
@@ -507,11 +518,10 @@ def create_sample_data(data_dir):
     with open(os.path.join(data_dir, 'intention_labels.json'), 'w') as f:
         json.dump(intention_labels, f)
     
-    # Sample test interactions - mỗi user có lịch sử mua hàng
+    # Sample test interactions
     interactions = []
-    for i in range(50):  # 50 users
+    for i in range(50):
         user_id = f'user_{i:04d}'
-        # Số lượng purchase ngẫu nhiên từ 1-15
         n_purchases = np.random.randint(1, 16)
         for _ in range(n_purchases):
             article_id = f'{np.random.randint(0, 100):010d}'
@@ -523,7 +533,7 @@ def create_sample_data(data_dir):
             })
     pd.DataFrame(interactions).to_csv(os.path.join(data_dir, 'test_interactions.csv'), index=False)
     
-    # Sample user confidence - dựa trên số lượng interactions
+    # Sample user confidence
     user_interaction_counts = {}
     for inter in interactions:
         uid = inter['customer_id']
@@ -533,7 +543,6 @@ def create_sample_data(data_dir):
     for i in range(50):
         user_id = f'user_{i:04d}'
         count = user_interaction_counts.get(user_id, 0)
-        # Confidence cao hơn nếu có nhiều interactions
         conf = min(0.3 + count * 0.05, 0.95)
         confidence.append({
             'customer_id': user_id,
@@ -947,7 +956,7 @@ def render_explore_tab(engine):
                 help=intent_info['description']
             ):
                 st.session_state.selected_intention = i
-                st.rerun()  # ✅ DÙNG st.rerun() THAY CHO st.experimental_rerun()
+                st.rerun()
     
     # Show products for selected intention
     if st.session_state.get('selected_intention') is not None:
