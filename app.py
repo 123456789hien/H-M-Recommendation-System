@@ -4,14 +4,12 @@ import numpy as np
 import json
 import os
 import zipfile
-import requests
-from io import BytesIO
+import gdown
 from PIL import Image
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
 import tempfile
-import time
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -136,60 +134,37 @@ st.markdown("""
 # ============================================================================
 @st.cache_resource
 def download_and_extract_data(file_id):
-    """Robust download from Google Drive handling large file warnings"""
-    def get_confirm_token(response):
-        for key, value in response.cookies.items():
-            if key.startswith('download_warning'):
-                return value
-        return None
-
-    def save_response_content(response, destination):
-        CHUNK_SIZE = 32768
-        with open(destination, "wb") as f:
-            for chunk in response.iter_content(CHUNK_SIZE):
-                if chunk: # filter out keep-alive new chunks
-                    f.write(chunk)
-
-    URL = "https://docs.google.com/uc?export=download"
-    
+    """Use gdown to download from Google Drive and extract zip"""
     temp_dir = tempfile.mkdtemp()
     destination = os.path.join(temp_dir, "data.zip")
-    
-    session = requests.Session()
-    response = session.get(URL, params={'id': file_id}, stream=True)
-    token = get_confirm_token(response)
-
-    if token:
-        params = {'id': file_id, 'confirm': token}
-        response = session.get(URL, params=params, stream=True)
-
-    save_response_content(response, destination)
-    
-    extract_dir = os.path.join(temp_dir, "extracted")
-    os.makedirs(extract_dir, exist_ok=True)
+    url = f'https://drive.google.com/uc?id={file_id}'
     
     try:
+        # gdown handles the 'confirm' token and large file warnings automatically
+        gdown.download(url, destination, quiet=False)
+        
+        extract_dir = os.path.join(temp_dir, "extracted")
+        os.makedirs(extract_dir, exist_ok=True)
+        
         with zipfile.ZipFile(destination, 'r') as zip_ref:
             zip_ref.extractall(extract_dir)
         return extract_dir
-    except zipfile.BadZipFile:
-        # Fallback for small files or direct downloads
-        st.error("Downloaded file is not a valid ZIP. Please check the Google Drive link permissions.")
+    except Exception as e:
+        st.error(f"Error downloading/extracting data: {e}")
         return None
 
 class RecommendationEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
-        # The zip structure has a top level folder or direct files? 
-        # User said: hm_app_data.zip -> images/, data/
-        # We need to find where these folders are
+        # Auto-detect structure: zip might contain a folder or direct files
         self.base_path = data_dir
-        if 'images' not in os.listdir(self.base_path):
-            # Check if it's inside a subfolder (sometimes zips extract into a folder with the same name)
-            for item in os.listdir(self.base_path):
-                if os.path.isdir(os.path.join(self.base_path, item)) and 'images' in os.listdir(os.path.join(self.base_path, item)):
-                    self.base_path = os.path.join(self.base_path, item)
-                    break
+        
+        # Check for nested directory (common in zip files)
+        items = os.listdir(self.base_path)
+        if 'data' not in items and len(items) == 1:
+            potential_path = os.path.join(self.base_path, items[0])
+            if os.path.isdir(potential_path) and 'data' in os.listdir(potential_path):
+                self.base_path = potential_path
         
         self.images_dir = os.path.join(self.base_path, 'images')
         self.data_path = os.path.join(self.base_path, 'data')
@@ -344,16 +319,16 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    with st.spinner("Initializing AI Engine & Downloading Data..."):
+    with st.spinner("Initializing AI Engine & Downloading Data (this may take a minute)..."):
         data_dir = download_and_extract_data(FILE_ID)
         if not data_dir: 
-            st.error("Failed to load data. Please ensure the Google Drive link is public.")
+            st.error("Failed to download data. The Google Drive link might be blocked or private.")
+            st.info("Please verify the link: https://drive.google.com/file/d/1-wRrYq1f5R8XAMoVJHB8S_dt8MbfilcH/view")
             return
         try:
             engine = RecommendationEngine(data_dir)
         except Exception as e:
-            st.error(f"Error processing data files: {e}")
-            st.info("Ensure the ZIP file contains 'data/' and 'images/' folders.")
+            st.error(f"Error processing data: {e}")
             return
 
     with st.sidebar:
@@ -361,7 +336,6 @@ def main():
         st.markdown("---")
         st.subheader("User Selection")
         
-        # Load sampled users for selection
         try:
             sampled_users_df = pd.read_csv(os.path.join(engine.data_path, 'sampled_user_ids.csv'))
             test_users = sampled_users_df['customer_id'].tolist()
