@@ -3,7 +3,7 @@
 This repository contains the source code for a professional **H&M Fashion Recommendation App**, developed as part of a Master's Thesis. The application uses a **Three-Tower Neural Network** approach to provide intention-aware recommendations, achieving an AUC of **0.8201**.
 
 ## 🚀 Live Demo
-The app is designed to be deployed on [Streamlit Cloud](https://streamlit.io/cloud).
+The app is designed to be deployed on [[Streamlit Cloud](https://streamlit.io/cloud](https://share.streamlit.io/)).
 
 ## ✨ Key Features
 - **Personalized Recommendations**: Tailored fashion suggestions based on unique user intention profiles.
