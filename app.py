@@ -288,6 +288,9 @@ def load_data():
 # ============================================================================
 # BI ENGINE - COMPLETE FIX
 # ============================================================================
+# ============================================================================
+# BI ENGINE - COMPLETE FIX (NO HARDCODED DATA)
+# ============================================================================
 class BIEngine:
     def __init__(self, data_dir):
         """
@@ -395,149 +398,81 @@ class BIEngine:
             st.warning(f"⚠️ Error loading user_confidence_scores.csv: {str(e)}")
             self.user_confidence = pd.DataFrame()
         
-        # Load dominant distribution with enhanced handling
+        # Load dominant distribution from file ONLY
         self.dominant_dist = self._load_dominant_distribution(data_dir)
     
     def _load_dominant_distribution(self, data_dir):
         """
         Load user dominant intention distribution from file.
-        Handles both the new format (topic, intention_name) and old format (dominant_intention).
-        
-        Returns:
-            pd.DataFrame: DataFrame with columns 'dominant_intention' and 'user_count'
+        File format: topic, intention_name, user_count, user_share, user_share_pct
         """
         file_path = os.path.join(data_dir, 'data', 'user_dominant_intention_dist.csv')
         
         try:
             df = pd.read_csv(file_path)
             
-            if df.empty:
-                st.warning("⚠️ user_dominant_intention_dist.csv is empty. Generating from user intention weights...")
-                return self._create_dominant_distribution_from_weights()
+            # Check if file has data
+            if df is None or df.empty:
+                st.error("❌ user_dominant_intention_dist.csv is empty!")
+                return pd.DataFrame(columns=['dominant_intention', 'user_count'])
             
-            # --- Handle NEW format: topic, intention_name, user_count ---
+            st.text(f"📊 Reading file with {len(df)} rows, columns: {df.columns.tolist()}")
+            
+            # --- HANDLE YOUR FILE FORMAT: topic, intention_name, user_count ---
             if 'topic' in df.columns and 'intention_name' in df.columns:
-                # Map topics (0-9) to dominant_intention column
+                # Rename topic to dominant_intention
                 df.rename(columns={'topic': 'dominant_intention'}, inplace=True)
                 
-                # Ensure user_count exists
+                # user_count already exists in your file!
                 if 'user_count' not in df.columns:
-                    # Try to calculate from user_share_pct
-                    if 'user_share_pct' in df.columns:
-                        # Parse percentage string (e.g., "7.32%")
-                        if df['user_share_pct'].dtype == object:
-                            total_users = self._estimate_total_users()
-                            df['user_count'] = (df['user_share_pct'].str.rstrip('%').astype(float) / 100 * total_users).astype(int)
-                        else:
-                            total_users = self._estimate_total_users()
-                            df['user_count'] = (df['user_share_pct'] / 100 * total_users).astype(int)
-                    elif 'user_share' in df.columns:
-                        total_users = self._estimate_total_users()
-                        df['user_count'] = (df['user_share'] * total_users).astype(int)
-                    else:
-                        # Use default distribution if no count/percentage columns
-                        st.warning("⚠️ No user_count or share columns found. Using default distribution.")
-                        return self._create_dominant_distribution_from_weights()
+                    st.error("❌ 'user_count' column not found in file!")
+                    return pd.DataFrame(columns=['dominant_intention', 'user_count'])
                 
-                # Ensure dominant_intention is integer
+                # Convert to proper types
                 df['dominant_intention'] = df['dominant_intention'].astype(int)
+                df['user_count'] = df['user_count'].astype(int)
                 
                 # Keep only needed columns
-                df = df[['dominant_intention', 'user_count']]
+                result_df = df[['dominant_intention', 'user_count']].copy()
                 
-                st.text(f"✅ Loaded {len(df)} intentions from file (new format with 'topic' column)")
-                return df
+                st.text(f"✅ Loaded {len(result_df)} intentions from file")
+                
+                # Show the data for debugging
+                for _, row in result_df.iterrows():
+                    intent = row['dominant_intention']
+                    count = row['user_count']
+                    st.text(f"   Intention {intent}: {count:,} users")
+                
+                return result_df
             
             # --- Handle OLD format: dominant_intention, user_count ---
-            if 'dominant_intention' in df.columns and 'user_count' in df.columns:
+            elif 'dominant_intention' in df.columns and 'user_count' in df.columns:
                 df['dominant_intention'] = df['dominant_intention'].astype(int)
                 df['user_count'] = df['user_count'].astype(int)
                 st.text(f"✅ Loaded {len(df)} intentions from file (old format)")
-                return df
+                return df[['dominant_intention', 'user_count']].copy()
             
-            # --- If we get here, the file has unexpected columns ---
-            st.warning(f"⚠️ Unexpected columns in file: {df.columns.tolist()}. Using fallback...")
-            return self._create_dominant_distribution_from_weights()
-            
+            # --- Unexpected format ---
+            else:
+                st.error(f"❌ Unexpected columns: {df.columns.tolist()}")
+                st.error("Expected columns: 'topic' and 'user_count' OR 'dominant_intention' and 'user_count'")
+                return pd.DataFrame(columns=['dominant_intention', 'user_count'])
+                
         except FileNotFoundError:
-            st.warning("⚠️ user_dominant_intention_dist.csv not found. Generating from user intention weights...")
-            return self._create_dominant_distribution_from_weights()
+            st.error("❌ user_dominant_intention_dist.csv not found!")
+            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
+        except pd.errors.EmptyDataError:
+            st.error("❌ user_dominant_intention_dist.csv is empty!")
+            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
         except Exception as e:
-            st.warning(f"⚠️ Error loading dominant distribution: {str(e)}. Using fallback...")
-            return self._create_dominant_distribution_from_weights()
-    
-    def _estimate_total_users(self):
-        """
-        Estimate total number of users from available data.
-        """
-        # Try to get from user_intentions
-        if hasattr(self, 'user_intentions') and not self.user_intentions.empty:
-            return len(self.user_intentions)
-        
-        # Try to get from dominant_dist if already loaded
-        if hasattr(self, 'dominant_dist') and not self.dominant_dist.empty:
-            if 'user_count' in self.dominant_dist.columns:
-                return self.dominant_dist['user_count'].sum()
-        
-        # Default fallback (based on your data)
-        return 1_372_000  # Total users from your CSV
-    
-    def _create_dominant_distribution_from_weights(self):
-        """
-        Create dominant intention distribution from user_intention_weights.
-        This calculates the dominant intention for each user and counts them.
-        """
-        # Ensure intention_cols is defined
-        if not hasattr(self, 'intention_cols'):
-            st.error("❌ intention_cols not initialized! Using default distribution.")
-            # Create default balanced distribution
-            return pd.DataFrame({
-                'dominant_intention': list(range(10)),
-                'user_count': [1] * 10
-            })
-        
-        if self.user_intentions.empty:
-            st.warning("⚠️ No user intention data available. Using empty distribution.")
-            # Return a default distribution for demo
-            default_dist = {0: 100382, 1: 764946, 2: 11969, 3: 5942, 4: 115650, 
-                          5: 5234, 6: 50377, 7: 123378, 8: 152283, 9: 41819}
-            return pd.DataFrame([
-                {'dominant_intention': k, 'user_count': v}
-                for k, v in default_dist.items()
-            ])
-        
-        dist = {}
-        for _, row in self.user_intentions.iterrows():
-            try:
-                weights = row[self.intention_cols].values.astype(np.float32)
-                dominant = np.argmax(weights)
-                dist[dominant] = dist.get(dominant, 0) + 1
-            except (KeyError, ValueError) as e:
-                continue
-        
-        # Convert to DataFrame
-        df = pd.DataFrame([
-            {'dominant_intention': k, 'user_count': v}
-            for k, v in dist.items()
-        ])
-        
-        if df.empty:
-            st.warning("⚠️ Could not generate distribution from user weights. Using default.")
-            default_dist = {0: 100382, 1: 764946, 2: 11969, 3: 5942, 4: 115650, 
-                          5: 5234, 6: 50377, 7: 123378, 8: 152283, 9: 41819}
-            return pd.DataFrame([
-                {'dominant_intention': k, 'user_count': v}
-                for k, v in default_dist.items()
-            ])
-        
-        st.text(f"✅ Generated dominant distribution with {len(df)} intentions from user weights")
-        return df
+            st.error(f"❌ Error loading dominant distribution: {str(e)}")
+            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
     
     def _build_mappings(self):
         """Build dictionary mappings for fast lookup of articles and users"""
         # Article intention mappings
         self.article_intent_dict = {}
-        if not self.article_intentions.empty and not self.article_intentions.isnull().all().all():
+        if not self.article_intentions.empty:
             for _, row in self.article_intentions.iterrows():
                 try:
                     article_id = str(row['article_id'])
@@ -547,7 +482,7 @@ class BIEngine:
         
         # User intention mappings  
         self.user_intent_dict = {}
-        if not self.user_intentions.empty and not self.user_intentions.isnull().all().all():
+        if not self.user_intentions.empty:
             for _, row in self.user_intentions.iterrows():
                 try:
                     customer_id = str(row['customer_id'])
@@ -557,7 +492,7 @@ class BIEngine:
         
         # Article metadata mappings
         self.article_meta_dict = {}
-        if not self.article_df.empty and not self.article_df.isnull().all().all():
+        if not self.article_df.empty:
             for _, row in self.article_df.iterrows():
                 try:
                     article_id = str(row['article_id'])
@@ -572,28 +507,12 @@ class BIEngine:
     # ========================================================================
     
     def get_article_details(self, article_id):
-        """
-        Get detailed information for a specific article.
-        
-        Args:
-            article_id: Article ID (int or str)
-            
-        Returns:
-            dict: Article details or empty dict if not found
-        """
+        """Get detailed information for a specific article."""
         article_id = str(article_id)
         return self.article_meta_dict.get(article_id, {})
     
     def get_image_path(self, article_id):
-        """
-        Get the local image path for a specific article.
-        
-        Args:
-            article_id: Article ID (int or str)
-            
-        Returns:
-            str: Path to image file or None if not found
-        """
+        """Get the local image path for a specific article."""
         img_id = str(article_id).zfill(10)
         if os.path.exists(self.images_dir):
             for root, dirs, files in os.walk(self.images_dir):
@@ -610,43 +529,36 @@ class BIEngine:
         return INTENTION_NAMES.get(i, f'Intention {i}')
     
     def get_intention_icon(self, i):
-        """Get the icon for an intention"""
         return INTENTION_ICONS.get(i, '🎯')
     
     def get_intention_color(self, i):
-        """Get the color for an intention"""
         return INTENTION_COLORS.get(i, '#95A5A6')
     
     def get_intention_price_tier(self, i):
-        """Get the price tier for an intention"""
         key = str(i)
         if key in self.intention_labels:
             return self.intention_labels[key].get('price_tier', 'N/A')
         return 'N/A'
     
     def get_intention_mean_price(self, i):
-        """Get the mean price for an intention"""
         key = str(i)
         if key in self.intention_labels:
             return self.intention_labels[key].get('mean_price', 0)
         return 0
     
     def get_intention_article_count(self, i):
-        """Get the article count for an intention"""
         key = str(i)
         if key in self.intention_labels:
             return self.intention_labels[key].get('article_count', 0)
         return 0
     
     def get_intention_article_share(self, i):
-        """Get the article share percentage for an intention"""
         key = str(i)
         if key in self.intention_labels:
             return self.intention_labels[key].get('article_share', 0)
         return 0
     
     def get_model_performance(self):
-        """Get model performance metrics"""
         perf = self.app_summary.get('model_performance', {})
         return {
             'three_tower_auc': perf.get('three_tower_auc', 0.8201),
@@ -655,17 +567,12 @@ class BIEngine:
         }
     
     def get_user_distribution(self):
-        """
-        Get user distribution across intentions.
-        
-        Returns:
-            dict: {intention_id: user_count}
-        """
+        """Get user distribution across intentions from file data."""
         dist = {}
         
         if self.dominant_dist is None or self.dominant_dist.empty:
-            st.warning("⚠️ No distribution data available, using fallback...")
-            return self._create_fallback_distribution()
+            st.error("❌ No user distribution data available from file!")
+            return {i: 0 for i in range(10)}
         
         for _, row in self.dominant_dist.iterrows():
             try:
@@ -673,54 +580,13 @@ class BIEngine:
                 count = int(row['user_count'])
                 dist[intent] = count
             except (KeyError, ValueError) as e:
+                st.warning(f"⚠️ Error reading row: {row}")
                 continue
-        
-        # If no data was loaded, use fallback
-        if sum(dist.values()) == 0:
-            return self._create_fallback_distribution()
         
         return dist
     
-    def _create_fallback_distribution(self):
-        """
-        Create fallback distribution from user_intention_weights.
-        Used when dominant_dist is empty or invalid.
-        """
-        if not self.user_intentions.empty:
-            dist = {}
-            for _, row in self.user_intentions.iterrows():
-                try:
-                    weights = row[self.intention_cols].values.astype(np.float32)
-                    dominant = np.argmax(weights)
-                    dist[dominant] = dist.get(dominant, 0) + 1
-                except (KeyError, ValueError):
-                    continue
-            
-            if sum(dist.values()) > 0:
-                return dist
-        
-        # Final fallback: Use distribution from your CSV
-        st.info("Using known distribution from user_dominant_intention_dist.csv")
-        return {
-            0: 100382,   # Formal & Trend-Driven Self-Expression
-            1: 764946,   # Ladieswear Comfort & Personal Style
-            2: 11969,    # Dark Essential Basics
-            3: 5942,     # Infant & Baby Nurturing Care
-            4: 115650,   # Functional Durability & Versatility
-            5: 5234,     # Youth Trendy & Casual Provisioning
-            6: 50377,    # Hedonic Stimulation & Novelty
-            7: 123378,   # Personal Comfort & Intimate Care
-            8: 152283,   # Aesthetic Sophistication & Premium Investment
-            9: 41819     # Professional Identity & Menswear
-        }
-    
     def get_article_distribution(self):
-        """
-        Get article distribution across intentions.
-        
-        Returns:
-            dict: {intention_id: article_count}
-        """
+        """Get article distribution across intentions."""
         dist = {}
         if self.article_intentions.empty:
             return {i: 0 for i in range(10)}
@@ -736,12 +602,7 @@ class BIEngine:
         return dist
     
     def get_supply_demand_gap(self):
-        """
-        Calculate the supply-demand gap for each intention.
-        
-        Returns:
-            dict: {intention_id: gap_percentage_points}
-        """
+        """Calculate the supply-demand gap for each intention."""
         supply = self.get_article_distribution()
         demand = self.get_user_distribution()
         
@@ -750,22 +611,14 @@ class BIEngine:
         
         gaps = {}
         for i in range(10):
-            # Calculate percentages
             sup_pct = supply.get(i, 0) / total_supply * 100 if total_supply > 0 else 0
             dem_pct = demand.get(i, 0) / total_demand * 100 if total_demand > 0 else 0
-            
-            # Gap = Demand % - Supply % (positive means under-supplied)
             gaps[i] = dem_pct - sup_pct
         
         return gaps
     
     def get_intent_summary(self):
-        """
-        Get comprehensive summary for all intentions.
-        
-        Returns:
-            pd.DataFrame: Complete intention summary with metrics and recommendations
-        """
+        """Get comprehensive summary for all intentions."""
         supply = self.get_article_distribution()
         demand = self.get_user_distribution()
         gaps = self.get_supply_demand_gap()
@@ -779,7 +632,6 @@ class BIEngine:
             dem = demand.get(i, 0)
             gap = gaps.get(i, 0)
             
-            # Determine strategy based on gap
             if gap > 3:
                 strategy = "EXPAND"
                 strategy_color = "#27AE60"
