@@ -523,7 +523,7 @@ def render_model_comparison(engine):
         with only **0.2% of model parameters**.
     """)
 
-def render_supply_demand_gap(engine):
+def render_supply_demand_gap(engine, chart_key="sd_gap_main"):
     st.markdown("### 📊 Supply-Demand Gap Analysis")
     
     summary = engine.get_intent_summary()
@@ -554,8 +554,8 @@ def render_supply_demand_gap(engine):
         showlegend=False,
         yaxis_title='Gap (Demand - Supply) percentage points'
     )
-    
-    st.plotly_chart(fig, use_container_width=True)
+
+    st.plotly_chart(fig, use_container_width=True, key=f"plotly_{chart_key}")
 
 def render_intention_stats(engine):
     st.markdown("### 📊 Intention Statistics")
@@ -736,17 +736,17 @@ def main():
     ])
     
     with tab1:
-        render_supply_demand_gap(engine)
-        st.markdown("---")
-        render_intention_stats(engine)
+    render_supply_demand_gap(engine, chart_key="tab1_gap")  # Thêm key
+    st.markdown("---")
+    render_intention_stats(engine)
     
     with tab2:
         render_model_comparison(engine)
     
     with tab3:
-        render_supply_demand_gap(engine)
-        st.markdown("---")
-        render_intention_stats(engine)
+    render_supply_demand_gap(engine, chart_key="tab3_gap")  # Thêm key khác
+    st.markdown("---")
+    render_intention_stats(engine)
     
     with tab4:
         render_strategic_actions(engine)
