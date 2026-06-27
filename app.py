@@ -672,8 +672,14 @@ def render_recommendations(engine):
     
     cols = st.columns(4)
     for idx, (article_id, score) in enumerate(products):
-        details = engine.get_article_details(article_id)
-        if not details:
+        # SỬA DÒNG NÀY: Lấy trực tiếp từ dictionary thay vì gọi method
+        # details = engine.get_article_details(article_id)
+        
+        # Cách 1: Lấy từ article_meta_dict trực tiếp
+        article_id_str = str(article_id)
+        details = engine.article_meta_dict.get(article_id_str, {})
+        
+        if not details:  # Nếu không có details, bỏ qua
             continue
         
         with cols[idx % 4]:
@@ -690,9 +696,14 @@ def render_recommendations(engine):
             else:
                 st.image("https://via.placeholder.com/300x400?text=H&M", use_container_width=True)
             
+            # Lấy tên sản phẩm từ details
+            product_name = details.get('prod_name', 'Unknown')
+            if pd.isna(product_name):
+                product_name = 'Unknown'
+            
             st.markdown(f"""
                 <div class="product-info">
-                    <div class="product-name">{details.get('prod_name', 'Unknown')[:35]}</div>
+                    <div class="product-name">{product_name[:35]}</div>
                     <span class="intention-badge" style="background:{engine.get_intention_color(intent)};">
                         {engine.get_intention_icon(intent)} {engine.get_intention_name(intent)[:20]}
                     </span>
