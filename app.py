@@ -736,23 +736,24 @@ def main():
     ])
     
     with tab1:
-    render_supply_demand_gap(engine, chart_key="tab1_gap")  # Thêm key
+    pass  # Thêm dòng này nếu bạn chưa có code
+    render_supply_demand_gap(engine, chart_key="tab1_gap")
     st.markdown("---")
     render_intention_stats(engine)
-    
-    with tab2:
-        render_model_comparison(engine)
-    
-    with tab3:
-    render_supply_demand_gap(engine, chart_key="tab3_gap")  # Thêm key khác
+
+with tab2:
+    render_model_comparison(engine)
+
+with tab3:
+    render_supply_demand_gap(engine, chart_key="tab3_gap")
     st.markdown("---")
     render_intention_stats(engine)
-    
-    with tab4:
-        render_strategic_actions(engine)
-    
-    with tab5:
-        render_recommendations(engine)
+
+with tab4:
+    render_strategic_actions(engine)
+
+with tab5:
+    render_recommendations(engine)
     
     st.markdown("""
         <div class="footer">
