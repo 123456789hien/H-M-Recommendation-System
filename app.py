@@ -280,16 +280,7 @@ def load_data():
         return None
 
 # ============================================================================
-# BI ENGINE
-# ============================================================================
-# ============================================================================
 # BI ENGINE - COMPLETE FIX
-# ============================================================================
-# ============================================================================
-# BI ENGINE - COMPLETE FIX
-# ============================================================================
-# ============================================================================
-# BI ENGINE - COMPLETE FIX (NO HARDCODED DATA)
 # ============================================================================
 class BIEngine:
     def __init__(self, data_dir):
@@ -388,84 +379,63 @@ class BIEngine:
             st.warning(f"⚠️ Error loading intention_summary.csv: {str(e)}")
             self.intention_summary = pd.DataFrame()
         
+        # Load user_confidence_scores.csv
         try:
             self.user_confidence = pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
             st.text(f"✅ Loaded user_confidence_scores.csv: {len(self.user_confidence)} rows")
         except FileNotFoundError:
-            st.warning("⚠️ user_confidence_scores.csv not found. Will use defaults.")
+            st.error("❌ user_confidence_scores.csv not found!")
             self.user_confidence = pd.DataFrame()
         except Exception as e:
-            st.warning(f"⚠️ Error loading user_confidence_scores.csv: {str(e)}")
+            st.error(f"❌ Error loading user_confidence_scores.csv: {str(e)}")
             self.user_confidence = pd.DataFrame()
         
-        # Load dominant distribution from file ONLY
+        # Load dominant distribution from user_confidence_scores.csv
         self.dominant_dist = self._load_dominant_distribution(data_dir)
     
     def _load_dominant_distribution(self, data_dir):
         """
-        Load user dominant intention distribution from file.
-        File format: topic, intention_name, user_count, user_share, user_share_pct
+        Load user dominant intention distribution from user_confidence_scores.csv.
+        Uses the 'dominant_intention' column to count users per intention.
         """
-        file_path = os.path.join(data_dir, 'data', 'user_dominant_intention_dist.csv')
+        # Check if user_confidence is loaded
+        if self.user_confidence is None or self.user_confidence.empty:
+            st.error("❌ user_confidence_scores.csv is empty or not loaded!")
+            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
+        
+        # Check if dominant_intention column exists
+        if 'dominant_intention' not in self.user_confidence.columns:
+            st.error(f"❌ 'dominant_intention' column not found in user_confidence_scores.csv!")
+            st.text(f"   Available columns: {self.user_confidence.columns.tolist()}")
+            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
         
         try:
-            df = pd.read_csv(file_path)
+            # Count users per dominant intention
+            dist = self.user_confidence['dominant_intention'].value_counts().to_dict()
             
-            # Check if file has data
-            if df is None or df.empty:
-                st.error("❌ user_dominant_intention_dist.csv is empty!")
-                return pd.DataFrame(columns=['dominant_intention', 'user_count'])
+            # Create DataFrame
+            result_df = pd.DataFrame([
+                {'dominant_intention': int(k), 'user_count': int(v)}
+                for k, v in dist.items()
+            ]).sort_values('dominant_intention')
             
-            st.text(f"📊 Reading file with {len(df)} rows, columns: {df.columns.tolist()}")
+            st.text(f"✅ Generated distribution from user_confidence_scores.csv: {len(result_df)} intentions")
             
-            # --- HANDLE YOUR FILE FORMAT: topic, intention_name, user_count ---
-            if 'topic' in df.columns and 'intention_name' in df.columns:
-                # Rename topic to dominant_intention
-                df.rename(columns={'topic': 'dominant_intention'}, inplace=True)
-                
-                # user_count already exists in your file!
-                if 'user_count' not in df.columns:
-                    st.error("❌ 'user_count' column not found in file!")
-                    return pd.DataFrame(columns=['dominant_intention', 'user_count'])
-                
-                # Convert to proper types
-                df['dominant_intention'] = df['dominant_intention'].astype(int)
-                df['user_count'] = df['user_count'].astype(int)
-                
-                # Keep only needed columns
-                result_df = df[['dominant_intention', 'user_count']].copy()
-                
-                st.text(f"✅ Loaded {len(result_df)} intentions from file")
-                
-                # Show the data for debugging
-                for _, row in result_df.iterrows():
-                    intent = row['dominant_intention']
-                    count = row['user_count']
-                    st.text(f"   Intention {intent}: {count:,} users")
-                
-                return result_df
+            # Show the data for debugging
+            total_users = result_df['user_count'].sum()
+            st.text(f"📊 Total users: {total_users:,}")
+            for _, row in result_df.iterrows():
+                intent = row['dominant_intention']
+                count = row['user_count']
+                pct = count / total_users * 100
+                st.text(f"   Intention {intent}: {count:,} users ({pct:.2f}%)")
             
-            # --- Handle OLD format: dominant_intention, user_count ---
-            elif 'dominant_intention' in df.columns and 'user_count' in df.columns:
-                df['dominant_intention'] = df['dominant_intention'].astype(int)
-                df['user_count'] = df['user_count'].astype(int)
-                st.text(f"✅ Loaded {len(df)} intentions from file (old format)")
-                return df[['dominant_intention', 'user_count']].copy()
+            return result_df
             
-            # --- Unexpected format ---
-            else:
-                st.error(f"❌ Unexpected columns: {df.columns.tolist()}")
-                st.error("Expected columns: 'topic' and 'user_count' OR 'dominant_intention' and 'user_count'")
-                return pd.DataFrame(columns=['dominant_intention', 'user_count'])
-                
-        except FileNotFoundError:
-            st.error("❌ user_dominant_intention_dist.csv not found!")
-            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
-        except pd.errors.EmptyDataError:
-            st.error("❌ user_dominant_intention_dist.csv is empty!")
-            return pd.DataFrame(columns=['dominant_intention', 'user_count'])
         except Exception as e:
-            st.error(f"❌ Error loading dominant distribution: {str(e)}")
+            st.error(f"❌ Error generating distribution: {str(e)}")
+            import traceback
+            st.text(traceback.format_exc())
             return pd.DataFrame(columns=['dominant_intention', 'user_count'])
     
     def _build_mappings(self):
@@ -666,7 +636,7 @@ class BIEngine:
             })
         
         return pd.DataFrame(summary)
-
+        
 # ============================================================================
 # RENDER FUNCTIONS
 # ============================================================================
