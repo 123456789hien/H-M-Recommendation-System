@@ -736,24 +736,28 @@ def main():
     ])
     
     with tab1:
-    pass  # Thêm dòng này nếu bạn chưa có code
-    render_supply_demand_gap(engine, chart_key="tab1_gap")
-    st.markdown("---")
-    render_intention_stats(engine)
-
-with tab2:
-    render_model_comparison(engine)
-
-with tab3:
-    render_supply_demand_gap(engine, chart_key="tab3_gap")
-    st.markdown("---")
-    render_intention_stats(engine)
-
-with tab4:
-    render_strategic_actions(engine)
-
-with tab5:
-    render_recommendations(engine)
+        # Dashboard tab - hiển thị tổng quan
+        render_supply_demand_gap(engine, chart_key="tab1_gap")
+        st.markdown("---")
+        render_intention_stats(engine)
+    
+    with tab2:
+        # Model Comparison tab
+        render_model_comparison(engine)
+    
+    with tab3:
+        # Supply-Demand tab - hiển thị chi tiết
+        render_supply_demand_gap(engine, chart_key="tab3_gap")
+        st.markdown("---")
+        render_intention_stats(engine)
+    
+    with tab4:
+        # Strategic Actions tab
+        render_strategic_actions(engine)
+    
+    with tab5:
+        # Recommendations tab
+        render_recommendations(engine)
     
     st.markdown("""
         <div class="footer">
@@ -761,6 +765,6 @@ with tab5:
             <p>2,644 articles · 15,233 users · 27,915 interactions</p>
         </div>
     """, unsafe_allow_html=True)
-
+    
 if __name__ == "__main__":
     main()
