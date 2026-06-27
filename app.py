@@ -1,7 +1,7 @@
 # ============================================================================
 # H&M ENTERPRISE BUSINESS INTELLIGENCE APP
 # ============================================================================
-# 100% REAL DATA – No simulated/random values
+# Strategic BI Dashboard | Three-Tower vs Two-Tower Comparison
 # Data from: https://drive.google.com/drive/folders/1-gPW3AAVJOns0PeaR-qna5z1L7Wh6nlD
 # Images from: https://drive.google.com/drive/folders/1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6
 # ============================================================================
@@ -18,7 +18,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.metrics.pairwise import cosine_similarity
-import gdown
+import requests
 import subprocess
 
 # ============================================================================
@@ -32,8 +32,13 @@ st.set_page_config(
 )
 
 # ============================================================================
-# GOOGLE DRIVE FILE IDs (REAL DATA)
+# CONSTANTS
 # ============================================================================
+# Google Drive folder IDs
+DATA_FOLDER_ID = "1-gPW3AAVJOns0PeaR-qna5z1L7Wh6nlD"
+IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6"
+
+# File IDs from data folder (REAL DATA)
 FILE_IDS = {
     'article_metadata.csv': '1RjZmAdpGvQCQHeKpEL30dlTyRenWU1GY',
     'article_intention_profiles.csv': '1aHDWsO8tA2dtKd7bNkk85gk9DP9mNx9M',
@@ -48,28 +53,62 @@ FILE_IDS = {
     'user_dominant_intention_dist.csv': '1bXqgS02sUDRnPYGgn-2zs0aR3jchhXnj'
 }
 
-IMAGES_FOLDER_ID = "1cj1f09q4OXcBmG5Hpazn_dYrc9kC7qG6"
+# 10 INTENTIONS (from your intention_labels.json)
+INTENTION_NAMES = {
+    0: "Ladieswear Full Body: Special Occasion Dressing",
+    1: "Ladieswear Upper Body: Everyday Workwear Comfort",
+    2: "Unisex Dark Basics: Utilitarian Necessity Purchase",
+    3: "Baby Full Body: Infant & Nurturing Care",
+    4: "Unisex Lower Body: Functional Versatility Seeking",
+    5: "Children's Upper Body: Trendy & Casual Provisioning",
+    6: "Ladies Accessories & Footwear: Hedonic Purchase",
+    7: "Ladieswear Underwear: Intimate Self-Care",
+    8: "Ladieswear Knitwear: Premium Quality Investment",
+    9: "Menswear Shirts: Professional Identity Expression"
+}
+
+INTENTION_ICONS = {
+    0: "👗", 1: "👕", 2: "🧦", 3: "👶", 4: "👖",
+    5: "🧥", 6: "👜", 7: "💕", 8: "🧶", 9: "👔"
+}
+
+INTENTION_COLORS = {
+    0: "#E67E22", 1: "#2ECC71", 2: "#2C2C2C", 3: "#4ECDC4", 4: "#1B6CA8",
+    5: "#27AE60", 6: "#9B59B6", 7: "#E74C3C", 8: "#F39C12", 9: "#1E5496"
+}
+
+COLORS = {
+    'primary': '#2E86C1',
+    'secondary': '#1A5276',
+    'success': '#27AE60',
+    'warning': '#F39C12',
+    'danger': '#E74C3C',
+    'gold': '#F1C40F',
+    'dark': '#2C3E50',
+    'light': '#ECF0F1',
+    'white': '#FFFFFF'
+}
 
 # ============================================================================
-# CUSTOM CSS (giữ nguyên từ code trước)
+# CUSTOM CSS
 # ============================================================================
-st.markdown("""
+st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    * { font-family: 'Inter', sans-serif; }
+    * {{ font-family: 'Inter', sans-serif; }}
     
-    .main-header {
+    .main-header {{
         background: linear-gradient(135deg, #1A5276 0%, #2E86C1 100%);
         padding: 1.5rem 2rem;
         border-radius: 12px;
         color: white;
         margin-bottom: 2rem;
-    }
+    }}
     
-    .main-header h1 { font-size: 1.8rem; font-weight: 700; margin: 0; }
-    .main-header p { font-size: 0.9rem; opacity: 0.85; margin: 0.2rem 0 0 0; }
+    .main-header h1 {{ font-size: 1.8rem; font-weight: 700; margin: 0; }}
+    .main-header p {{ font-size: 0.9rem; opacity: 0.85; margin: 0.2rem 0 0 0; }}
     
-    .kpi-card {
+    .kpi-card {{
         background: white;
         border-radius: 12px;
         padding: 1.2rem;
@@ -77,13 +116,13 @@ st.markdown("""
         border-left: 4px solid #2E86C1;
         transition: all 0.2s;
         height: 100%;
-    }
+    }}
     
-    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
-    .kpi-number { font-size: 2rem; font-weight: 700; color: #2C3E50; }
-    .kpi-label { font-size: 0.75rem; color: #7F8C8D; text-transform: uppercase; letter-spacing: 0.5px; }
+    .kpi-card:hover {{ transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }}
+    .kpi-number {{ font-size: 2rem; font-weight: 700; color: #2C3E50; }}
+    .kpi-label {{ font-size: 0.75rem; color: #7F8C8D; text-transform: uppercase; letter-spacing: 0.5px; }}
     
-    .product-card {
+    .product-card {{
         background: white;
         border-radius: 12px;
         overflow: hidden;
@@ -91,15 +130,15 @@ st.markdown("""
         transition: all 0.3s ease;
         border: 1px solid #eee;
         height: 100%;
-    }
+    }}
     
-    .product-card:hover {
+    .product-card:hover {{
         transform: translateY(-4px);
         box-shadow: 0 8px 24px rgba(0,0,0,0.12);
         border-color: #2E86C1;
-    }
+    }}
     
-    .product-image {
+    .product-image {{
         width: 100%;
         aspect-ratio: 3/4;
         background: #f8f9fa;
@@ -107,14 +146,13 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         overflow: hidden;
-    }
+    }}
     
-    .product-image img { width: 100%; height: 100%; object-fit: cover; }
-    .product-info { padding: 0.8rem; }
-    .product-name { font-size: 0.85rem; font-weight: 500; color: #2C3E50; height: 2.6rem; overflow: hidden; }
-    .product-price { font-size: 1.1rem; font-weight: 700; color: #2E86C1; }
+    .product-image img {{ width: 100%; height: 100%; object-fit: cover; }}
+    .product-info {{ padding: 0.8rem; }}
+    .product-name {{ font-size: 0.85rem; font-weight: 500; color: #2C3E50; height: 2.6rem; overflow: hidden; }}
     
-    .intention-badge {
+    .intention-badge {{
         display: inline-block;
         padding: 0.2rem 0.6rem;
         border-radius: 20px;
@@ -122,18 +160,18 @@ st.markdown("""
         font-weight: 600;
         color: white;
         margin-top: 0.3rem;
-    }
+    }}
     
-    .footer {
+    .footer {{
         text-align: center;
         padding: 2rem 0;
         color: #95A5A6;
         font-size: 0.8rem;
         border-top: 1px solid #eee;
         margin-top: 2rem;
-    }
+    }}
     
-    .model-comparison-card {
+    .model-comparison-card {{
         background: white;
         border-radius: 12px;
         padding: 1.5rem;
@@ -141,12 +179,47 @@ st.markdown("""
         text-align: center;
         border-top: 4px solid #2E86C1;
         height: 100%;
-    }
+    }}
     
-    .model-comparison-card .value { font-size: 2.5rem; font-weight: 700; color: #2C3E50; }
-    .model-comparison-card .label { font-size: 0.8rem; color: #7F8C8D; text-transform: uppercase; }
+    .model-comparison-card .value {{ font-size: 2.5rem; font-weight: 700; color: #2C3E50; }}
+    .model-comparison-card .label {{ font-size: 0.8rem; color: #7F8C8D; text-transform: uppercase; }}
 </style>
 """, unsafe_allow_html=True)
+
+# ============================================================================
+# DOWNLOAD FUNCTION - FIXED FOR GOOGLE DRIVE
+# ============================================================================
+def download_file_from_gdrive(file_id, destination):
+    """
+    Download file from Google Drive using requests.
+    Handles the confirmation page that gdown fails to bypass.
+    """
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    session = requests.Session()
+    response = session.get(url, stream=True)
+    
+    # Check for confirmation token
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            url = f"https://drive.google.com/uc?export=download&confirm={value}&id={file_id}"
+            response = session.get(url, stream=True)
+            break
+    
+    # Check if we got HTML instead of file
+    content_type = response.headers.get('content-type', '')
+    if 'text/html' in content_type and 'download_warning' not in response.text:
+        # Try alternative URL
+        url = f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0"
+        response = session.get(url, stream=True)
+    
+    # Save file
+    with open(destination, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    
+    return destination
 
 # ============================================================================
 # DATA LOADING
@@ -162,8 +235,8 @@ def load_data():
             st.markdown("""
                 <div style="text-align: center; padding: 2rem;">
                     <div style="font-size: 3rem; margin-bottom: 0.5rem;">📊</div>
-                    <h3 style="color: #2C3E50;">Loading Real Data</h3>
-                    <p style="color: #7F8C8D;">From Google Drive...</p>
+                    <h3 style="color: #2C3E50;">Loading Strategic Data</h3>
+                    <p style="color: #7F8C8D;">Downloading from Google Drive...</p>
                 </div>
             """, unsafe_allow_html=True)
             progress_bar = st.progress(0)
@@ -175,17 +248,26 @@ def load_data():
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(images_dir, exist_ok=True)
         
-        # Download all data files
+        # Download data files using fixed function
         for i, (filename, file_id) in enumerate(FILE_IDS.items()):
-            url = f"https://drive.google.com/uc?id={file_id}"
-            gdown.download(url, os.path.join(data_dir, filename), quiet=True)
+            dest_path = os.path.join(data_dir, filename)
+            download_file_from_gdrive(file_id, dest_path)
+            st.text(f"  ✓ {filename}")
             progress_bar.progress(10 + int(i / len(FILE_IDS) * 40))
         
         # Download images folder
         progress_bar.progress(50)
+        st.text("📥 Downloading images...")
+        
         os.chdir(images_dir)
         folder_url = f"https://drive.google.com/drive/folders/{IMAGES_FOLDER_ID}"
         subprocess.run(["gdown", folder_url, "--folder", "--quiet"], capture_output=True)
+        
+        # Count images
+        image_count = 0
+        for root, dirs, files in os.walk(images_dir):
+            image_count += len([f for f in files if f.endswith('.jpg')])
+        st.text(f"  ✓ Downloaded {image_count} images")
         
         progress_bar.progress(100)
         time.sleep(0.5)
@@ -198,53 +280,43 @@ def load_data():
         return None
 
 # ============================================================================
-# BI ENGINE – ONLY REAL DATA
+# BI ENGINE
 # ============================================================================
 class BIEngine:
     def __init__(self, data_dir):
         self.data_dir = data_dir
         self.images_dir = os.path.join(data_dir, 'images')
         
-        # Load real data from files
+        # Load data
         self.article_df = pd.read_csv(os.path.join(data_dir, 'data', 'article_metadata.csv'))
         self.article_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'article_intention_profiles.csv'))
         self.user_intentions = pd.read_csv(os.path.join(data_dir, 'data', 'user_intention_weights.csv'))
         self.test_interactions = pd.read_csv(os.path.join(data_dir, 'data', 'test_interactions.csv'))
         
-        # Load intention labels
         with open(os.path.join(data_dir, 'data', 'intention_labels.json'), 'r') as f:
             self.intention_labels = json.load(f)
         
-        # Load app summary (model performance)
         with open(os.path.join(data_dir, 'data', 'app_summary.json'), 'r') as f:
             self.app_summary = json.load(f)
         
-        # Load intention summary (real stats)
         self.intention_summary = pd.read_csv(os.path.join(data_dir, 'data', 'intention_summary.csv'))
-        
-        # Load user confidence
         self.user_confidence = pd.read_csv(os.path.join(data_dir, 'data', 'user_confidence_scores.csv'))
-        
-        # Load dominant intention distribution
         self.dominant_dist = pd.read_csv(os.path.join(data_dir, 'data', 'user_dominant_intention_dist.csv'))
         
         self.intention_cols = [f'intention_{i}' for i in range(10)]
         self._build_mappings()
     
     def _build_mappings(self):
-        # Article intention mapping
         self.article_intent_dict = {
             str(row['article_id']): row[self.intention_cols].values.astype(np.float32)
             for _, row in self.article_intentions.iterrows()
         }
         
-        # User intention mapping
         self.user_intent_dict = {
             str(row['customer_id']): row[self.intention_cols].values.astype(np.float32)
             for _, row in self.user_intentions.iterrows()
         }
         
-        # Article metadata
         self.article_meta_dict = {
             str(row['article_id']): row.to_dict()
             for _, row in self.article_df.iterrows()
@@ -261,41 +333,14 @@ class BIEngine:
     def get_intention_name(self, i):
         key = str(i)
         if key in self.intention_labels:
-            return self.intention_labels[key].get('name', f'Intention {i}')
-        return f'Intention {i}'
+            return self.intention_labels[key].get('name', INTENTION_NAMES.get(i, f'Intention {i}'))
+        return INTENTION_NAMES.get(i, f'Intention {i}')
     
     def get_intention_icon(self, i):
-        # Extract from short_name or use default
-        key = str(i)
-        if key in self.intention_labels:
-            short = self.intention_labels[key].get('short_name', '')
-            if '👗' in short or 'Formal' in short:
-                return '👗'
-            elif '👕' in short or 'Tops' in short:
-                return '👕'
-            elif '🧦' in short or 'Basics' in short:
-                return '🧦'
-            elif '👶' in short or 'Baby' in short:
-                return '👶'
-            elif '👖' in short or 'Bottoms' in short:
-                return '👖'
-            elif '🧥' in short or 'Kids' in short:
-                return '🧥'
-            elif '👜' in short or 'Accessories' in short:
-                return '👜'
-            elif '💕' in short or 'Underwear' in short:
-                return '💕'
-            elif '🧶' in short or 'Knitwear' in short:
-                return '🧶'
-            elif '👔' in short or 'Menswear' in short:
-                return '👔'
-        return '🎯'
+        return INTENTION_ICONS.get(i, '🎯')
     
     def get_intention_color(self, i):
-        key = str(i)
-        if key in self.intention_labels:
-            return self.intention_labels[key].get('color', '#95A5A6')
-        return '#95A5A6'
+        return INTENTION_COLORS.get(i, '#95A5A6')
     
     def get_intention_price_tier(self, i):
         key = str(i)
@@ -322,7 +367,6 @@ class BIEngine:
         return 0
     
     def get_model_performance(self):
-        """Lấy từ app_summary.json"""
         perf = self.app_summary.get('model_performance', {})
         return {
             'three_tower_auc': perf.get('three_tower_auc', 0.8201),
@@ -331,7 +375,6 @@ class BIEngine:
         }
     
     def get_user_distribution(self):
-        """Lấy từ user_dominant_intention_dist.csv"""
         dist = {}
         for _, row in self.dominant_dist.iterrows():
             intent = int(row['dominant_intention'])
@@ -340,7 +383,6 @@ class BIEngine:
         return dist
     
     def get_article_distribution(self):
-        """Tính từ article_intention_profiles.csv"""
         dist = {}
         for _, row in self.article_intentions.iterrows():
             intent = np.argmax(row[self.intention_cols].values)
@@ -348,7 +390,6 @@ class BIEngine:
         return dist
     
     def get_supply_demand_gap(self):
-        """Tính gap từ real data"""
         supply = self.get_article_distribution()
         demand = self.get_user_distribution()
         total_supply = sum(supply.values())
@@ -362,7 +403,6 @@ class BIEngine:
         return gaps
     
     def get_intent_summary(self):
-        """Tổng hợp tất cả real data"""
         supply = self.get_article_distribution()
         demand = self.get_user_distribution()
         gaps = self.get_supply_demand_gap()
@@ -375,7 +415,6 @@ class BIEngine:
             dem = demand.get(i, 0)
             gap = gaps.get(i, 0)
             
-            # Strategy based on real gap
             if gap > 3:
                 strategy = "EXPAND"
                 strategy_color = "#27AE60"
@@ -406,8 +445,7 @@ class BIEngine:
                 'price_tier': self.get_intention_price_tier(i),
                 'mean_price': self.get_intention_mean_price(i),
                 'article_count': self.get_intention_article_count(i),
-                'article_share': self.get_intention_article_share(i),
-                'loyal_customers': dem // 10  # Tính từ demand
+                'article_share': self.get_intention_article_share(i)
             })
         return pd.DataFrame(summary)
 
@@ -415,10 +453,9 @@ class BIEngine:
 # RENDER FUNCTIONS
 # ============================================================================
 def render_model_comparison(engine):
-    """Hiển thị so sánh Three-Tower vs Two-Tower từ REAL data"""
     perf = engine.get_model_performance()
     
-    st.markdown("### 🧠 Model Performance: Three-Tower vs Two-Tower (Real Data)")
+    st.markdown("### 🧠 Model Performance: Three-Tower vs Two-Tower")
     
     col1, col2, col3 = st.columns(3)
     
@@ -458,7 +495,7 @@ def render_model_comparison(engine):
             </div>
         """, unsafe_allow_html=True)
     
-    # Ablation summary (hardcoded từ results của bạn)
+    # Ablation
     st.markdown("#### 🔬 Ablation Study: Tower Contributions")
     
     ablation_data = {
@@ -483,12 +520,11 @@ def render_model_comparison(engine):
     
     st.caption("""
         💡 **Key Finding:** Tower 3 (Intention Alignment) contributes 34.1% of total AUC gain 
-        with only **0.2% of model parameters** — the highest parameter efficiency.
+        with only **0.2% of model parameters**.
     """)
 
 def render_supply_demand_gap(engine):
-    """Supply-Demand Gap từ REAL data"""
-    st.markdown("### 📊 Supply-Demand Gap Analysis (Real Data)")
+    st.markdown("### 📊 Supply-Demand Gap Analysis")
     
     summary = engine.get_intent_summary()
     summary = summary.sort_values('gap', ascending=False)
@@ -502,7 +538,6 @@ def render_supply_demand_gap(engine):
         marker_color=colors,
         text=[f"{g:+.1f}pp" for g in summary['gap']],
         textposition='outside',
-        hovertemplate='<b>%{x}</b><br>Gap: %{y:+.1f}pp<br>Supply: %{customdata[0]:.1f}%<br>Demand: %{customdata[1]:.1f}%<extra></extra>',
         customdata=summary[['supply_pct', 'demand_pct']].values
     ))
     
@@ -523,14 +558,14 @@ def render_supply_demand_gap(engine):
     st.plotly_chart(fig, use_container_width=True)
 
 def render_intention_stats(engine):
-    """Thống kê từ REAL data (intention_labels.json)"""
-    st.markdown("### 📊 Intention Statistics (Real Data)")
+    st.markdown("### 📊 Intention Statistics")
     
     summary = engine.get_intent_summary()
     
-    # Display real stats from intention_labels.json
-    display_df = summary[['icon', 'intention_id', 'name', 'price_tier', 'mean_price', 'article_count', 'article_share', 'demand_pct', 'supply_pct', 'gap', 'strategy']].copy()
-    display_df.columns = ['', 'ID', 'Intention', 'Price Tier', 'Mean Price', 'Articles', 'Article %', 'Demand %', 'Supply %', 'Gap (pp)', 'Strategy']
+    display_df = summary[['icon', 'intention_id', 'name', 'price_tier', 'mean_price', 
+                          'article_count', 'article_share', 'demand_pct', 'supply_pct', 'gap', 'strategy']].copy()
+    display_df.columns = ['', 'ID', 'Intention', 'Price Tier', 'Mean Price', 
+                          'Articles', 'Article %', 'Demand %', 'Supply %', 'Gap (pp)', 'Strategy']
     display_df['Mean Price'] = display_df['Mean Price'].apply(lambda x: f"${x:.4f}")
     display_df['Article %'] = display_df['Article %'].apply(lambda x: f"{x*100:.2f}%")
     display_df['Demand %'] = display_df['Demand %'].apply(lambda x: f"{x:.1f}%")
@@ -539,30 +574,83 @@ def render_intention_stats(engine):
     
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-def render_intention_details(engine):
-    """Chi tiết từng intention từ REAL data"""
-    st.markdown("### 🎯 Intention Details (Real Data)")
+def render_strategic_actions(engine):
+    st.markdown("### 🎯 Strategic Actions")
     
     summary = engine.get_intent_summary()
     
-    for i in range(10):
-        row = summary.iloc[i]
-        with st.expander(f"{row['icon']} T{i}: {row['name'][:50]}", expanded=i==0):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Price Tier", row['price_tier'])
-            with col2:
-                st.metric("Mean Price", f"${row['mean_price']:.4f}")
-            with col3:
-                st.metric("Articles", f"{row['article_count']:,}")
-            with col4:
-                st.metric("Article Share", f"{row['article_share']*100:.2f}%")
-            
-            st.progress(row['demand_pct'] / 100, text=f"Demand Share: {row['demand_pct']:.1f}%")
-            st.progress(row['supply_pct'] / 100, text=f"Supply Share: {row['supply_pct']:.1f}%")
+    expand = summary[summary['gap'] > 3].sort_values('gap', ascending=False)
+    rationalize = summary[summary['gap'] < -3].sort_values('gap', ascending=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+            <div style="background: #27AE60; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                ⬆️ EXPAND (Under-served)
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if len(expand) > 0:
+            for _, row in expand.iterrows():
+                st.markdown(f"""
+                    <div style="background: white; border-radius: 12px; padding: 1rem; margin-bottom: 0.8rem; border-left: 4px solid #27AE60; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                        <div style="display: flex; align-items: center; gap: 0.8rem;">
+                            <span style="font-size: 2rem;">{row['icon']}</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600;">{row['intention_id']}: {row['name'][:40]}</div>
+                                <div style="font-size: 0.8rem; color: #555;">
+                                    Gap: <span style="color: #27AE60; font-weight: 600;">{row['gap']:+.1f}pp</span>
+                                    | Demand: {row['demand_pct']:.1f}% | Supply: {row['supply_pct']:.1f}%
+                                </div>
+                                <div style="font-size: 0.8rem; color: #2E86C1;">
+                                    Price: ${row['mean_price']:.4f} | Articles: {row['article_count']:,}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f0f9f0; border-radius: 8px; font-size: 0.8rem; color: #1a6b3a;">
+                            💡 <b>Recommendation:</b> Increase assortment by 10-15%.
+                            {row['intention_id']} has {row['demand_pct']:.1f}% demand but only {row['supply_pct']:.1f}% supply.
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No under-served intentions detected.")
+    
+    with col2:
+        st.markdown("""
+            <div style="background: #E74C3C; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                ⬇️ RATIONALIZE (Over-supplied)
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if len(rationalize) > 0:
+            for _, row in rationalize.iterrows():
+                st.markdown(f"""
+                    <div style="background: white; border-radius: 12px; padding: 1rem; margin-bottom: 0.8rem; border-left: 4px solid #E74C3C; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                        <div style="display: flex; align-items: center; gap: 0.8rem;">
+                            <span style="font-size: 2rem;">{row['icon']}</span>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600;">{row['intention_id']}: {row['name'][:40]}</div>
+                                <div style="font-size: 0.8rem; color: #555;">
+                                    Gap: <span style="color: #E74C3C; font-weight: 600;">{row['gap']:+.1f}pp</span>
+                                    | Demand: {row['demand_pct']:.1f}% | Supply: {row['supply_pct']:.1f}%
+                                </div>
+                                <div style="font-size: 0.8rem; color: #2E86C1;">
+                                    Price: ${row['mean_price']:.4f} | Articles: {row['article_count']:,}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: #fdf0f0; border-radius: 8px; font-size: 0.8rem; color: #8b1a1a;">
+                            💡 <b>Recommendation:</b> Reduce assortment by 10-15%.
+                            {row['intention_id']} has {row['supply_pct']:.1f}% supply but only {row['demand_pct']:.1f}% demand.
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No over-supplied intentions detected.")
 
 def render_recommendations(engine):
-    """Product recommendations với ảnh thật"""
     st.markdown("### 🛍️ Product Recommendations")
     
     col1, col2 = st.columns([1, 2])
@@ -571,7 +659,7 @@ def render_recommendations(engine):
         intent_filter = st.selectbox(
             "🎯 Filter by Intention",
             options=[-1] + list(range(10)),
-            format_func=lambda x: "All Intentions" if x == -1 else f"{engine.get_intention_icon(x)} T{x}: {engine.get_intention_name(x)[:25]}"
+            format_func=lambda x: "All Intentions" if x == -1 else f"{engine.get_intention_icon(x)} {engine.get_intention_name(x)[:30]}"
         )
     
     products = []
@@ -613,93 +701,6 @@ def render_recommendations(engine):
             
             st.markdown('</div>', unsafe_allow_html=True)
 
-def render_strategic_actions(engine):
-    """Strategic actions từ REAL data"""
-    st.markdown("### 🎯 Strategic Actions (Based on Real Data)")
-    
-    summary = engine.get_intent_summary()
-    
-    expand = summary[summary['gap'] > 3].sort_values('gap', ascending=False)
-    rationalize = summary[summary['gap'] < -3].sort_values('gap', ascending=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("""
-            <div style="background: #27AE60; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                ⬆️ EXPAND (Under-served Intentions)
-            </div>
-        """, unsafe_allow_html=True)
-        
-        if len(expand) > 0:
-            for _, row in expand.iterrows():
-                st.markdown(f"""
-                    <div style="background: white; border-radius: 12px; padding: 1rem; margin-bottom: 0.8rem; border-left: 4px solid #27AE60; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-                        <div style="display: flex; align-items: center; gap: 0.8rem;">
-                            <span style="font-size: 2rem;">{row['icon']}</span>
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600;">{row['intention_id']}: {row['name'][:40]}</div>
-                                <div style="font-size: 0.8rem; color: #555;">
-                                    Gap: <span style="color: #27AE60; font-weight: 600;">{row['gap']:+.1f}pp</span>
-                                    | Demand: {row['demand_pct']:.1f}% | Supply: {row['supply_pct']:.1f}%
-                                </div>
-                                <div style="font-size: 0.8rem; color: #2E86C1;">
-                                    Price: ${row['mean_price']:.4f} | Articles: {row['article_count']:,}
-                                </div>
-                            </div>
-                            <div style="text-align: right;">
-                                <div style="background: #27AE60; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-size: 0.7rem; font-weight: 600;">
-                                    {row['price_tier']}
-                                </div>
-                            </div>
-                        </div>
-                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f0f9f0; border-radius: 8px; font-size: 0.8rem; color: #1a6b3a;">
-                            💡 <b>Recommendation:</b> Increase assortment depth. {row['intention_id']} shows high demand ({row['demand_pct']:.1f}%) 
-                            but only {row['supply_pct']:.1f}% supply. Expand by 10-15%.
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No under-served intentions detected.")
-    
-    with col2:
-        st.markdown("""
-            <div style="background: #E74C3C; color: white; padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                ⬇️ RATIONALIZE (Over-supplied Intentions)
-            </div>
-        """, unsafe_allow_html=True)
-        
-        if len(rationalize) > 0:
-            for _, row in rationalize.iterrows():
-                st.markdown(f"""
-                    <div style="background: white; border-radius: 12px; padding: 1rem; margin-bottom: 0.8rem; border-left: 4px solid #E74C3C; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-                        <div style="display: flex; align-items: center; gap: 0.8rem;">
-                            <span style="font-size: 2rem;">{row['icon']}</span>
-                            <div style="flex: 1;">
-                                <div style="font-weight: 600;">{row['intention_id']}: {row['name'][:40]}</div>
-                                <div style="font-size: 0.8rem; color: #555;">
-                                    Gap: <span style="color: #E74C3C; font-weight: 600;">{row['gap']:+.1f}pp</span>
-                                    | Demand: {row['demand_pct']:.1f}% | Supply: {row['supply_pct']:.1f}%
-                                </div>
-                                <div style="font-size: 0.8rem; color: #2E86C1;">
-                                    Price: ${row['mean_price']:.4f} | Articles: {row['article_count']:,}
-                                </div>
-                            </div>
-                            <div style="text-align: right;">
-                                <div style="background: #E74C3C; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-size: 0.7rem; font-weight: 600;">
-                                    {row['price_tier']}
-                                </div>
-                            </div>
-                        </div>
-                        <div style="margin-top: 0.5rem; padding: 0.5rem; background: #fdf0f0; border-radius: 8px; font-size: 0.8rem; color: #8b1a1a;">
-                            💡 <b>Recommendation:</b> Reduce assortment depth. {row['intention_id']} has {row['supply_pct']:.1f}% supply 
-                            but only {row['demand_pct']:.1f}% demand. Rationalize by 10-15%.
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No over-supplied intentions detected.")
-
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -726,11 +727,10 @@ def main():
     
     engine = BIEngine(data_dir)
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Dashboard",
         "🧠 Model Comparison",
         "📈 Supply-Demand",
-        "🎯 Intention Details",
         "📋 Strategic Actions",
         "🛍️ Recommendations"
     ])
@@ -749,17 +749,14 @@ def main():
         render_intention_stats(engine)
     
     with tab4:
-        render_intention_details(engine)
-    
-    with tab5:
         render_strategic_actions(engine)
     
-    with tab6:
+    with tab5:
         render_recommendations(engine)
     
     st.markdown("""
         <div class="footer">
-            <p>🏢 H&M Strategic BI</p>
+            <p>🏢 H&M Strategic BI · Real Data from 10% Test Set</p>
             <p>2,644 articles · 15,233 users · 27,915 interactions</p>
         </div>
     """, unsafe_allow_html=True)
