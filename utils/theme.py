@@ -28,28 +28,28 @@ MUTED = "#8A8578"
 # One consistent colour per intention segment (T0-T9), used everywhere:
 # chips, radar chart traces, card accents, BI charts.
 INTENTION_COLORS = {
-    0: "#A65B8C",  # Formal & Trend-Driven Self-Expression
-    1: "#3B3873",  # Ladieswear Comfort & Personal Style (largest segment -> brand primary)
-    2: "#2B2B2E",  # Dark Essential Basics
-    3: "#C9932E",  # Infant & Baby Nurturing Care
-    4: "#5B7065",  # Functional Durability & Versatility
-    5: "#4F8FA6",  # Youth Trendy & Casual Provisioning
-    6: "#C23B5E",  # Hedonic Stimulation & Novelty
-    7: "#B98CA6",  # Personal Comfort & Intimate Care
-    8: "#8A6D3B",  # Aesthetic Sophistication & Premium Investment
-    9: "#35506B",  # Professional Identity & Menswear
+    0: "#A65B8C",  # T0 — Ladieswear Full Body: Special Occasion Dressing
+    1: "#3B3873",  # T1 — Ladieswear Upper Body: Everyday Workwear Comfort (largest segment -> brand primary)
+    2: "#2B2B2E",  # T2 — Unisex Dark Basics: Utilitarian Necessity Purchase
+    3: "#C9932E",  # T3 — Baby Full Body: Infant & Nurturing Care
+    4: "#5B7065",  # T4 — Unisex Lower Body: Functional Versatility Seeking
+    5: "#4F8FA6",  # T5 — Children's Upper Body: Trendy & Casual Provisioning
+    6: "#C23B5E",  # T6 — Ladies Accessories & Footwear: Hedonic Purchase
+    7: "#B98CA6",  # T7 — Ladieswear Underwear: Intimate Self-Care
+    8: "#8A6D3B",  # T8 — Ladieswear Knitwear: Premium Quality Investment
+    9: "#35506B",  # T9 — Menswear Shirts: Professional Identity Expression
 }
 
 # A one-line "psychological lens" per segment — descriptive framing already
 # implicit in the segment names chosen in thesis Chapter 4, surfaced here as
 # design content rather than decoration.
 INTENTION_LENS = {
-    0: "Self-expression & social signalling",
+    0: "Occasion-driven self-presentation",
     1: "Habitual comfort — low-friction repeat purchase",
-    2: "Minimalist wardrobe foundation",
+    2: "Utilitarian, necessity-driven purchase",
     3: "Caregiving & attachment-driven purchase",
     4: "Functional utility over aesthetics",
-    5: "Novelty-seeking, trend-following",
+    5: "Parental provisioning — trendy, casual purchases for children",
     6: "Hedonic reward & impulse purchase",
     7: "Private, intimate self-care",
     8: "Aspirational, quality-driven investment",
@@ -83,7 +83,7 @@ def inject_global_css():
             color: {INK} !important;
             letter-spacing: -0.01em;
         }}
-        p, li, span, div {{
+        p, li {{
             color: {INK};
         }}
 
@@ -95,11 +95,13 @@ def inject_global_css():
             font-weight: 600;
             color: white !important;
         }}
-        .stButton > button[kind="primary"] p {{
+        .stButton > button[kind="primary"] * {{
             color: white !important;
         }}
         .stButton > button[kind="primary"]:hover {{
             background-color: #2C2A56;
+        }}
+        .stButton > button[kind="primary"]:hover * {{
             color: white !important;
         }}
 
