@@ -1,34 +1,31 @@
 """
 pages/1_Segment_Detail.py — Segment Detail
 ================================================================================
-The drill-down for one intention segment, combining what used to be three
-separate pages: a representative persona radar (from the old Recommendation
-Demo), the product grid (from the old Product Catalog), and a real revenue
-trend + rule-based recommendation (from the Performance Console concept) —
-plus a "Recommendation Engine Audit" panel so the same screen also answers
-"is the model treating this segment fairly?", not just "how is this segment
-performing?".
+The drill-down for one intention segment: a representative persona radar,
+a real revenue trend that RESPONDS to the sidebar period selector (month/
+quarter/year + comparison), a rule-based recommendation, and the product
+grid. The Recommendation Engine Audit has moved to its own page
+(2_Recommendation_Audit.py) — this page is now purely business reporting,
+not a model QA tool.
 ================================================================================
 """
 
 import os
 import numpy as np
-import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 
 from utils.data_loader import (
-    download_data, load_articles, load_feature_matrices, load_demo_personas,
-    load_intention_labels, load_monthly_trends, model_paths, image_path,
+    download_data, load_articles, load_demo_personas,
+    load_intention_labels, load_monthly_trends, image_path,
 )
-from utils.models import load_models
-from utils.recommender import score_catalog, explain_recommendation
 from utils.theme import (
     inject_global_css, intention_color, intention_lens, render_sidebar_chrome,
-    render_period_selector, status_badge, thin_rule, THREAD,
+    render_period_selector, status_badge, thin_rule,
 )
-from utils.charts import intention_radar_chart, tower_contribution_chart
-from utils.trends import with_period_columns, aggregate_period
+from utils.charts import intention_radar_chart
+from utils.trends import with_period_columns, aggregate_period, segment_comparison, GRANULARITY_COL
 from utils.thesis_data import segment_static, model_improvement, recommendation_text
 
 st.set_page_config(page_title="Segment Detail", page_icon="🔍", layout="wide")
@@ -67,21 +64,38 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ============================================================================
+# Period-aware summary — THIS block now actually uses the sidebar selector
+# ============================================================================
+agg = aggregate_period(monthly_df, granularity) if period else None
+seg_comparison_row = None
+if agg is not None:
+    comp = segment_comparison(agg, period, granularity, compare_mode)
+    if k in comp.index:
+        seg_comparison_row = comp.loc[k]
+
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Customers in segment", f"{static['users']:,}", f"{static['user_share']:.2f}% of base")
 m2.metric("Avg. confidence", f"{static['confidence']:.4f}")
 m3.metric("Supply-demand gap (txn-count, Table 5.2)", f"{static['gap']:+.2f}pp", status_label)
-m4.metric("Model AUC gain (Table 4.7)", f"+{model_improvement(k):.1f}%")
+if seg_comparison_row is not None and seg_comparison_row["revenue_share_pct"] is not None:
+    delta = seg_comparison_row["delta_pp"]
+    delta_str = f"{delta:+.2f}pp vs {compare_mode.lower()}" if delta is not None else "no prior period"
+    m4.metric(f"Revenue share ({period})", f"{seg_comparison_row['revenue_share_pct']:.2f}%", delta_str)
+else:
+    m4.metric(f"Revenue share ({period or 'n/a'})", "—", "no data for this period")
+
 st.caption(
-    "The gap above is transaction-count based (Table 5.2, static). The "
-    "revenue trend chart below is revenue-weighted and time-based — a "
-    "different, complementary metric; the two are not directly comparable."
+    "The gap (m3) is transaction-count based (Table 5.2, static, unaffected "
+    "by the period selector). Revenue share (m4) and the chart below are "
+    f"revenue-weighted for the **{granularity.lower()} you selected in the "
+    "sidebar** — the two metrics are complementary, not the same number."
 )
 
 thin_rule()
 
 # ============================================================================
-# Radar (representative persona) + real monthly trend
+# Radar (representative persona) + real revenue trend — period-aware
 # ============================================================================
 radar_col, trend_col = st.columns(2)
 
@@ -100,20 +114,60 @@ with radar_col:
         st.info("No demo persona available for this segment.")
 
 with trend_col:
-    st.subheader("Revenue share trend (real transaction data)")
-    seg_monthly = monthly_df[monthly_df["intention"] == k].sort_values("year_month")
-    if len(seg_monthly):
-        fig = px.line(
-            seg_monthly, x="year_month", y="revenue_share_pct", markers=True,
-            labels={"year_month": "Month", "revenue_share_pct": "Revenue share (%)"},
-        )
-        fig.update_traces(line_color=accent, marker_color=accent)
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=300)
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Share of total monthly revenue attributable to this segment, "
-                   "computed from transaction dates (t_dat) — not simulated.")
+    st.subheader(f"Revenue share trend — by {granularity.lower()}")
+    if agg is None or agg.empty:
+        st.info("monthly_segment_trends.csv not found yet — run Script 01.")
     else:
-        st.info("monthly_segment_trends.csv not found yet — run the Script 01 bonus step.")
+        col = GRANULARITY_COL[granularity]
+        seg_series = agg[agg["intention"] == k].sort_values(col)
+        if len(seg_series):
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=seg_series[col], y=seg_series["revenue_share_pct"],
+                mode="lines+markers", line=dict(color=accent), marker=dict(color=accent),
+            ))
+            # Highlight the selected period so the chart visibly reflects the sidebar choice
+            if period in seg_series[col].values:
+                sel_row = seg_series[seg_series[col] == period].iloc[0]
+                fig.add_trace(go.Scatter(
+                    x=[period], y=[sel_row["revenue_share_pct"]], mode="markers",
+                    marker=dict(color="#C23B5E", size=14, symbol="star"),
+                    name="Selected period", showlegend=False,
+                ))
+            fig.update_layout(
+                xaxis_title=granularity, yaxis_title="Revenue share (%)",
+                margin=dict(l=10, r=10, t=10, b=10), height=300, showlegend=False,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(
+                f"Aggregated to {granularity.lower()} level, matching the sidebar selector. "
+                "The red star marks the period currently selected."
+            )
+        else:
+            st.info("No data for this segment at the current granularity.")
+
+thin_rule()
+
+# ============================================================================
+# Model impact estimate for the selected period (honest framing — see caption)
+# ============================================================================
+st.subheader("Estimated Three-Tower impact for this period")
+if seg_comparison_row is not None and seg_comparison_row["revenue"] is not None:
+    period_revenue = seg_comparison_row["revenue"]
+    uplift_pct = model_improvement(k) / 100
+    estimated_uplift = period_revenue * uplift_pct
+    c1, c2 = st.columns(2)
+    c1.metric(f"Segment revenue ({period})", f"{period_revenue:,.0f}")
+    c2.metric("Estimated incremental revenue from Three-Tower", f"+{estimated_uplift:,.0f}",
+              f"{model_improvement(k):.1f}% (Table 4.7)")
+    st.caption(
+        "⚠️ Illustrative estimate only: real period revenue × the measured "
+        "AUC improvement for this segment (Table 4.7), applied as a proxy for "
+        "revenue uplift. This is not a live A/B test result — no online "
+        "experiment comparing the two models has been run."
+    )
+else:
+    st.info("Select a period with available data to see this estimate.")
 
 thin_rule()
 
@@ -139,59 +193,4 @@ for i, (_, product) in enumerate(seg_articles.iterrows()):
         st.caption(str(product.get("prod_name", ""))[:28])
 
 thin_rule()
-
-# ============================================================================
-# Recommendation Engine Audit — is the model treating this segment fairly?
-# ============================================================================
-st.subheader("Recommendation engine audit")
-st.caption(
-    "Pick a real persona from this segment and inspect exactly what the "
-    "Three-Tower model recommends and why — a QA check on the engine's "
-    "behaviour, not a shopping demo."
-)
-
-seg_personas = personas[personas["dominant_intention"] == k]
-if len(seg_personas) == 0:
-    st.warning("No persona available for this segment to audit.")
-else:
-    persona_label = st.selectbox("Persona", seg_personas["persona_label"].tolist(), key=f"audit_persona_{k}")
-    persona_row = seg_personas[seg_personas["persona_label"] == persona_label].iloc[0]
-
-    if st.button("Run audit", type="primary"):
-        three_path, two_path = model_paths()
-        three_model, two_model = load_models(three_path, two_path)
-        visual_feat, semantic_feat, art_feat_idx = load_feature_matrices()
-
-        user_intention = persona_row[[f"intention_{i}" for i in range(10)]].values.astype(np.float32)
-        user_demo = np.array([
-            persona_row.get("age", 30.0), persona_row.get("FN", 0.0), persona_row.get("Active", 0.0),
-        ], dtype=np.float32)
-
-        with st.spinner("Scoring catalogue..."):
-            top, _ = score_catalog(
-                three_model, two_model, visual_feat, semantic_feat, art_feat_idx,
-                articles, user_intention, user_demo, top_n=8,
-            )
-        st.session_state[f"audit_result_{k}"] = top
-
-    if f"audit_result_{k}" in st.session_state:
-        top = st.session_state[f"audit_result_{k}"]
-        st.markdown(
-            f"Avg. Three-Tower score **{top['three_tower_score'].mean():.3f}** vs. "
-            f"Two-Tower **{top['two_tower_score'].mean():.3f}** "
-            f"(Δ {top['score_delta'].mean():+.3f}) for this persona."
-        )
-        for _, product in top.iterrows():
-            img_col, text_col, chart_col = st.columns([1, 2, 2])
-            with img_col:
-                ip = image_path(product["article_id"])
-                if os.path.exists(ip):
-                    st.image(ip, use_container_width=True)
-            with text_col:
-                st.markdown(f"**{str(product.get('prod_name', 'Product'))[:38]}**")
-                st.caption(f"3T {product['three_tower_score']:.3f} · 2T {product['two_tower_score']:.3f}")
-                st.markdown(explain_recommendation(product, intention_labels))
-            with chart_col:
-                tf = tower_contribution_chart(product["tower1_mag"], product["tower2_mag"], product["tower3_mag"])
-                st.plotly_chart(tf, use_container_width=True, config={"displayModeBar": False})
-            thin_rule()
+st.page_link("pages/2_Recommendation_Audit.py", label="Go to Recommendation Engine Audit →", icon="🧪")
