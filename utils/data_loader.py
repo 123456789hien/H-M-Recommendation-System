@@ -51,7 +51,7 @@ def download_data():
     ]
 
     already_ok = os.path.isdir(DATA_DIR) and all(
-        os.path.exists(os.path.join(DATA_DIR, f)) for f in core_files
+    os.path.exists(os.path.join(DATA_DIR, f)) for f in core_files
     )
     if already_ok:
         return True
