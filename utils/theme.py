@@ -256,3 +256,17 @@ def trend_arrow(delta_pp) -> str:
     if delta_pp < -0.05:
         return f"↓ {delta_pp:.2f}pp"
     return "→ flat"
+
+
+# Threshold separating a genuine intention-driven match from a coincidental
+# one. Chosen from observed score clustering (Section on Recommendation
+# Audit): true within-segment matches score ~0.11-0.19, unrelated items
+# score ~0.02-0.07 — 0.10 sits cleanly between the two clusters.
+ALIGNMENT_STRONG_THRESHOLD = 0.10
+
+
+def alignment_badge(value: float) -> tuple[str, str]:
+    """Returns (label, hex_color) for a Hadamard alignment score."""
+    if value >= ALIGNMENT_STRONG_THRESHOLD:
+        return "🎯 Strong intention match", "#5B7065"
+    return "🖼️ Visual/semantic match only", "#8A8578"
