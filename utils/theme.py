@@ -209,13 +209,21 @@ def render_period_selector(monthly_df) -> tuple[str, str, str]:
     """Renders granularity / period / compare-mode controls in the sidebar
     and returns (granularity, selected_period, compare_mode). Persists the
     selection in st.session_state so it stays consistent as the user moves
-    between Command Center and Segment Detail."""
+    between Command Center and Segment Detail. Granularity "All time"
+    collapses the entire date range into one view (no period picker, no
+    comparison — there's nothing to compare "all time" against)."""
     from utils.trends import with_period_columns, period_options
 
     df = with_period_columns(monthly_df)
     with st.sidebar:
         st.markdown("**Reporting period**")
-        granularity = st.radio("Granularity", ["Month", "Quarter", "Year"], horizontal=True, key="granularity")
+        granularity = st.radio("Granularity", ["Month", "Quarter", "Year", "All time"], horizontal=True, key="granularity")
+
+        if granularity == "All time":
+            st.caption("Showing totals across the entire dataset (Sep 2018 – Sep 2020).")
+            st.markdown("<hr style='margin:14px 0; border-color:#181A2022;'>", unsafe_allow_html=True)
+            return granularity, "All", "N/A — all time has no prior period"
+
         options = period_options(df, granularity)
         if not options:
             st.caption("⚠️ monthly_segment_trends.csv not found yet — re-run the Script 01 bonus step and re-upload data_export.zip to Drive.")
