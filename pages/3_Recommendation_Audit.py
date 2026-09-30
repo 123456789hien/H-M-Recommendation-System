@@ -18,7 +18,7 @@ from utils.data_loader import (
 )
 from utils.models import load_models
 from utils.recommender import score_catalog, explain_recommendation
-from utils.theme import inject_global_css, intention_color, render_sidebar_chrome, thin_rule
+from utils.theme import inject_global_css, intention_color, render_sidebar_chrome, thin_rule, alignment_badge, ALIGNMENT_STRONG_THRESHOLD
 from utils.charts import tower_contribution_chart
 
 st.set_page_config(page_title="Recommendation Audit", page_icon="🧪", layout="wide")
@@ -76,10 +76,12 @@ if result_key in st.session_state:
     top = st.session_state[result_key]
 
     thin_rule()
-    m1, m2, m3 = st.columns(3)
+    n_strong = int((top["top_alignment_value"] >= ALIGNMENT_STRONG_THRESHOLD).sum())
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric("Avg. Three-Tower score", f"{top['three_tower_score'].mean():.3f}")
     m2.metric("Avg. Two-Tower score", f"{top['two_tower_score'].mean():.3f}")
     m3.metric("Average delta", f"{top['score_delta'].mean():+.3f}")
+    m4.metric("Strong intention matches", f"{n_strong}/{len(top)}")
     st.caption(
         "⚠️ Individual items can have a negative delta even though Three-Tower "
         "wins on average (+3.52% AUC over 544,178 test interactions, thesis "
@@ -88,18 +90,34 @@ if result_key in st.session_state:
         "and can flip sign — this matches McNemar's test (Table 4.9): in "
         "35.5% of cases where the two models disagree, Two-Tower is actually "
         "correct. Increase the slider above or try a different persona to see "
-        "the aggregate advantage emerge more clearly."
+        "the aggregate advantage emerge more clearly.\n\n"
+        "🎯 **Strong intention match** = Hadamard alignment score ≥ 0.10 — the "
+        "product's own dominant intention genuinely overlaps this persona's "
+        "profile. Below that, the recommendation is driven mainly by Tower 1 "
+        "(visual) and Tower 2 (semantic), with Tower 3 close to neutral — "
+        "this is expected: Tower 3 only activates strongly for products that "
+        "truly match the shopper's motivation, not every item in the feed."
     )
 
+    sort_by_alignment = st.checkbox("Sort by intention-alignment strength (instead of score)", value=False)
+    display_df = top.sort_values("top_alignment_value", ascending=False) if sort_by_alignment else top
+
     thin_rule()
-    for _, product in top.iterrows():
+    for _, product in display_df.iterrows():
+        badge_label, badge_color = alignment_badge(product["top_alignment_value"])
         img_col, text_col, chart_col = st.columns([1, 2, 2])
         with img_col:
             ip = image_path(product["article_id"])
             if os.path.exists(ip):
                 st.image(ip, use_container_width=True)
         with text_col:
-            st.markdown(f"**{str(product.get('prod_name', 'Product'))[:38]}**")
+            st.markdown(
+                f"<div style='border-left:3px solid {badge_color}; padding-left:8px;'>"
+                f"<b>{str(product.get('prod_name', 'Product'))[:38]}</b><br>"
+                f"<span style='color:{badge_color}; font-size:0.82rem;'>{badge_label} "
+                f"({product['top_alignment_value']:.3f})</span></div>",
+                unsafe_allow_html=True,
+            )
             st.caption(f"3T {product['three_tower_score']:.3f} · 2T {product['two_tower_score']:.3f}")
             st.markdown(explain_recommendation(product, intention_labels))
         with chart_col:
