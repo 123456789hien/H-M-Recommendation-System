@@ -89,15 +89,42 @@ def score_catalog(
 def explain_recommendation(row, intention_labels: dict) -> str:
     """Generates a natural-language explanation for one recommended item
     (the Explainable Intention Layer — a business feature proposed in
-    Chapter 6 of the thesis)."""
+    Chapter 6 of the thesis).
+
+    Also surfaces the product's OWN dominant intention when it differs from
+    the alignment dimension shown above — this can happen when the
+    shopper's profile is heavily concentrated (confidence near 1.0): the
+    Hadamard product's argmax collapses to the user's one dominant
+    dimension for almost any item with a non-zero probability there,
+    regardless of that item's own primary topic. Without this note, the
+    explanation can look like a mislabelled product; it is actually
+    expected behaviour of the alignment formula under a near one-hot user
+    profile, not a data error.
+    """
     k = int(row["top_alignment_intention"])
     name = intention_labels.get(str(k), {}).get("name", f"T{k}")
     val = row["top_alignment_value"]
     delta = row["score_delta"]
     direction = "higher than" if delta > 0 else "lower than"
-    return (
+
+    text = (
         f"Recommended mainly because both you and this product score highly "
         f"on the shopping-intention segment **\"{name}\"** (Hadamard "
         f"alignment score = {val:.3f}). The Three-Tower model's prediction "
         f"for this item is {direction} the Two-Tower model's by {abs(delta):.3f}."
     )
+
+    own_k = row.get("dominant_intention", None)
+    if own_k is not None and int(own_k) != k:
+        own_k = int(own_k)
+        own_name = intention_labels.get(str(own_k), {}).get("name", f"T{own_k}")
+        text += (
+            f"\n\nℹ️ *This product's own primary catalogue topic is actually "
+            f"\"{own_name}\" (T{own_k}), not T{k}. This mismatch is expected "
+            f"when a shopper's profile is heavily concentrated on one "
+            f"intention (confidence near 1.0): almost any product with even "
+            f"a small probability on that one dimension will show it as the "
+            f"top alignment, because the user's weight there dominates the "
+            f"Hadamard product — it does not mean the product was miscategorised.*"
+        )
+    return text
