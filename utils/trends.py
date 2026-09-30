@@ -49,7 +49,10 @@ def period_options(df: pd.DataFrame, granularity: str) -> list[str]:
 def aggregate_period(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
     """Collapses the monthly table to the chosen granularity, recomputing
     revenue_share_pct within each period (not just summing the monthly
-    shares, which would be mathematically wrong)."""
+    shares, which would be mathematically wrong). granularity="All time"
+    collapses across the ENTIRE date range instead of one period."""
+    if granularity == "All time":
+        return aggregate_all(df)
     col = GRANULARITY_COL[granularity]
     if df.empty:
         return df
@@ -61,6 +64,23 @@ def aggregate_period(df: pd.DataFrame, granularity: str) -> pd.DataFrame:
     ).reset_index()
     totals = agg.groupby(col)["revenue"].transform("sum")
     agg["revenue_share_pct"] = (agg["revenue"] / totals * 100).round(4)
+    return agg
+
+
+def aggregate_all(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapses the ENTIRE monthly table (all 25 months) into one row per
+    segment — the 'All time' view, for when the user wants the full-period
+    picture instead of one month/quarter/year."""
+    if df.empty:
+        return df
+    agg = df.groupby("intention").agg(
+        revenue=("revenue", "sum"),
+        units=("units", "sum"),
+        n_customers=("n_customers", "sum"),
+        avg_price=("avg_price", "mean"),
+    ).reset_index()
+    total = agg["revenue"].sum()
+    agg["revenue_share_pct"] = (agg["revenue"] / total * 100).round(4)
     return agg
 
 
@@ -97,7 +117,21 @@ def segment_comparison(agg_df: pd.DataFrame, period: str, granularity: str, mode
     For each of the 10 segments, returns current-period revenue_share_pct,
     the comparison-period value (NaN if unavailable), and the delta in
     percentage points — the number shown as "↑ +2.1pp" on segment cards.
+    granularity="All time" has no period column and no prior period —
+    every segment's row is just its all-time total, delta_pp is always None.
     """
+    if granularity == "All time":
+        current = agg_df.set_index("intention")
+        rows = []
+        for k in range(10):
+            cur_share = float(current.loc[k, "revenue_share_pct"]) if k in current.index else None
+            cur_revenue = float(current.loc[k, "revenue"]) if k in current.index else None
+            rows.append({
+                "intention": k, "revenue_share_pct": cur_share, "revenue": cur_revenue,
+                "prior_share_pct": None, "delta_pp": None, "prior_label": None,
+            })
+        return pd.DataFrame(rows).set_index("intention")
+
     col = GRANULARITY_COL[granularity]
     current = agg_df[agg_df[col] == period].set_index("intention")
 
