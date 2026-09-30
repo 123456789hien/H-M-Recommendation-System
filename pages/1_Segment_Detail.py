@@ -117,6 +117,14 @@ with trend_col:
     st.subheader(f"Revenue share trend — by {granularity.lower()}")
     if agg is None or agg.empty:
         st.info("monthly_segment_trends.csv not found yet — run Script 01.")
+    elif granularity == "All time":
+        seg_series = agg[agg["intention"] == k]
+        if len(seg_series):
+            row = seg_series.iloc[0]
+            st.metric("Revenue share (all time)", f"{row['revenue_share_pct']:.2f}%")
+            st.caption("Select Month, Quarter, or Year in the sidebar to see the trend line over time.")
+        else:
+            st.info("No data for this segment.")
     else:
         col = GRANULARITY_COL[granularity]
         seg_series = agg[agg["intention"] == k].sort_values(col)
@@ -193,4 +201,6 @@ for i, (_, product) in enumerate(seg_articles.iterrows()):
         st.caption(str(product.get("prod_name", ""))[:28])
 
 thin_rule()
-st.page_link("pages/2_Recommendation_Audit.py", label="Go to Recommendation Engine Audit →", icon="🧪")
+link_col1, link_col2 = st.columns(2)
+link_col1.page_link("pages/2_Personalized_Experience.py", label="See the shopping experience →", icon="✨")
+link_col2.page_link("pages/3_Recommendation_Audit.py", label="Go to Recommendation Engine Audit →", icon="🧪")
