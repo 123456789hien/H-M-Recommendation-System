@@ -104,6 +104,14 @@ thin_rule()
 st.header("Step 2 — Compare the two storefronts")
 n_products = st.slider("Feed size", 4, 12, 8, step=4)
 
+# Cache key must uniquely identify the CURRENT selection (persona/archetype +
+# feed size) — using only own_k here was a bug: two different personas in
+# the same segment share the same own_k, so changing persona without
+# re-clicking "Generate" silently kept showing the PREVIOUS persona's stale
+# results, which looked like "always the same %" no matter what you picked.
+selection_id = persona_choice if mode.startswith("Real") else archetype_choice
+cache_key = f"{selection_id}::{n_products}"
+
 if st.button("Generate storefronts", type="primary"):
     visual_feat, semantic_feat, art_feat_idx = load_feature_matrices()
     user_demo = np.array([age, fn, active], dtype=np.float32)
@@ -113,15 +121,23 @@ if st.button("Generate storefronts", type="primary"):
             articles, user_intention, user_demo, top_n=n_products,
         )
     st.session_state["exp_full"] = full_scored
+    st.session_state["exp_cache_key"] = cache_key
     st.session_state["exp_own_k"] = own_k
 
-if "exp_full" in st.session_state and st.session_state.get("exp_own_k") == own_k:
+if st.session_state.get("exp_cache_key") != cache_key and "exp_full" in st.session_state:
+    st.warning(
+        "⚠️ Selection changed since the last run — click **Generate storefronts** "
+        "again to refresh (showing the previous result below until you do)."
+    )
+
+if "exp_full" in st.session_state:
     full_scored = st.session_state["exp_full"]
+    own_k_shown = st.session_state["exp_own_k"]
     three_feed = full_scored.sort_values("three_tower_score", ascending=False).head(n_products)
     two_feed = full_scored.sort_values("two_tower_score", ascending=False).head(n_products)
 
-    three_match = (three_feed["dominant_intention"] == own_k).mean() * 100
-    two_match = (two_feed["dominant_intention"] == own_k).mean() * 100
+    three_match = (three_feed["dominant_intention"] == own_k_shown).mean() * 100
+    two_match = (two_feed["dominant_intention"] == own_k_shown).mean() * 100
 
     thin_rule()
     st.subheader("The metric that matters to a shopper: does the feed match why I actually shop?")
@@ -132,10 +148,12 @@ if "exp_full" in st.session_state and st.session_state.get("exp_own_k") == own_k
     st.caption(
         "Computed directly: the % of the feed whose own dominant intention "
         "matches this shopper's dominant intention (T"
-        f"{own_k} — {intention_labels[str(own_k)]['name']}). This is an "
+        f"{own_k_shown} — {intention_labels[str(own_k_shown)]['name']}). This is an "
         "intuitive, customer-facing relevance measure — distinct from AUC, "
         "which measures ranking quality across the whole test set rather "
-        "than feed-level topical relevance for one shopper."
+        "than feed-level topical relevance for one shopper. With a small "
+        "feed size and a narrow segment, 0% can occur by chance — try "
+        "increasing Feed size to 12 for a more stable read."
     )
 
     thin_rule()
@@ -150,7 +168,7 @@ if "exp_full" in st.session_state and st.session_state.get("exp_own_k") == own_k
                     ip = image_path(product["article_id"])
                     if os.path.exists(ip):
                         st.image(ip, use_container_width=True)
-                    matches = int(product["dominant_intention"]) == own_k
+                    matches = int(product["dominant_intention"]) == own_k_shown
                     tag = "✅ matches intent" if matches else "· different intent"
                     st.caption(f"{str(product.get('prod_name',''))[:26]}  \n{tag}")
 
