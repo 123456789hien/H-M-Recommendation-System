@@ -1,4 +1,4 @@
-# H&M Preference Studio
+# H&M Preference Studio (https://share.streamlit.io/)
 
 **Intention Analytics for fashion brands.** A brand or marketing team reads what customers prefer across **10 preference topics** (found by a topic model
 from product photos, descriptions, category and price), then forms its own intention to act: which product lines to promote, add or reduce, and which
